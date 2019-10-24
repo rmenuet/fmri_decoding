@@ -1,0 +1,117 @@
+{
+  "nv_path":       "str, path where to download all Neurovault data (tens of GB required)",
+  "cache_path":    "str, path where to store some intermediary files (tens of GB required)",
+  "mask_file":     "str, path to the mask file used to select grey matter",
+  "dict_file":     "str, path to the dictionary of brain components used to embed full voxel maps",
+  "meta_path":     "str, path where to store metadata CSV dataframes extracted from Neurovault",
+  "meta_file":     "str, name of the file (stored in meta_path) with  the full metadata for all maps",
+
+  "collect": {
+    "download": "bool, whether to (re)download data, if false uses a dump file stored in the cahe folder",
+    "hcp_tags": "str, CSV file with the mapping between HCP metadata (collection 4337) and the corresponding labels (cognitive concepts)"
+  },
+
+  "filter": {
+    "output_colls": "str, path to an unused CSV file with collections metadata, usefull for data exploration only",
+
+    "has_cog_paradigm":      "bool, whether to remove fMRIs without 'cognitive_paradigm_cogatlas' field",
+    "has_labels":            "bool, whether to remove fMRIs without 'tags' field",
+    "has_task":              "bool, whether to remove fMRIs without 'task' field",
+    "has_cont":              "bool, whether to remove fMRIs without 'contrast_definition' field",
+    "has_desc":              "bool, whether to remove fMRIs without 'description' field",
+    "has_mod":               "bool, whether to remove fMRIs without 'modality' field",
+    "proper_mod":            "bool, whether to remove fMRIs not matching the modalities in 'proper_mod_param'",
+    "proper_mod_param":      "list of str, authorized values",
+    "not_duplicate":         "bool, whether to remove duplicated fMRIs (based on stat-map hash)",
+    "enough_coverage":       "bool, whether to remove fMRIs with not enough brain coverage (in percents)",
+    "enough_coverage_param": "int, minimum percentage",
+    "enough_values":         "str, whether to remove fMRIs with too few different values (stat-maps that are too much discretized or masks)",
+    "enough_values_param":   "int, minimum number of values",
+    "centered":              "bool, whether to remove fMRIs that are not centered enough",
+    "centered_param":        "int, percentile of values where zero is not allowed",
+    "unthresholded":         "bool, whether to remove fMRIs that are thresholded too much",
+    "unthresholded_param":   "float, max percentage of zero values around zero",
+    "min_max_abs_val":       "bool, whether to remove fMRIs with a max voxel value below a minimum",
+    "min_max_abs_val_param": "float, minimum max value",
+    "max_max_abs_val":       "bool, whether to remove fMRIs with a max voxel value above a maximum",
+    "max_max_abs_val_param": "float, maximum max value",
+    "proper_type":           "bool, whether to remove fMRIs whose 'map_type' is not included in 'proper_type_param'",
+    "proper_type_param":     "list of str, atuhorized types",
+    "min_fmri":              "bool, whether to remove collections with too few fMRIs",
+    "not_temporary":         "bool, whether to remove collections tagued as 'temporay'",
+    "coll_white_list":       "list of int, white list of 'collection_id' to include (all by default)",
+    "coll_black_list":       "list of int, black list of 'collection_id' to exclude (none by default)"
+
+  },
+  "resample": {
+    "input_field":   "str, field where to find the map file location in the metadata dataframe",
+    "output_file":   "str, CSV file where to save the locations of resampled map files",
+    "interpolation": "str, interpolation type among those supported by nilearn's resample_to_img function",
+    "overwrite":     "bool, whether to overwrite files if resampled files already exist (set to false to only resample new files)"
+  },
+  "mask": {
+    "input_file":   "str, CSV file where the locations of resampled map files were saved (output file of the previous step)",
+    "output_file":  "str, Pickle file where to save the resampled maps matrix file"
+  },
+  "embed": {
+    "input_file":   "str, Pickle file where the resampled maps matrix file was saved (output file of the previous step)",
+    "output_file":  "str, Pickle file where to save the embedded maps matrix file (can be used for decoding experiments)",
+    "center":       "bool, whether to center the components values at embedding time",
+    "scale":        "bool, whether to scale the standard deviation of the components values to 1 at embedding time",
+    "nan_max":      "float between 0.0 and 1.0, the ratio of NaN or zero values in a component for it to be set to 0 (for imputation in the next step)"
+  },
+  "impute": {
+    "input_file":   "str, Pickle file where the embedded maps matrix file was saved (output file of the previous step)",
+    "output_file":  "str, Pickle file where to save the embedded maps (with missing components imputed) matrix file (can be used for decoding experiments)",
+    "imputation":   "str among 'median', 'mean' and 'sample', the imputation strategy for missing components",
+    "scale":        "bool, whether to scale components values before imputation"
+  },
+  "label": {
+    "id_test":       "list of int, identifiers of collections to be used for validation",
+    "concepts_file": "str, the CSV file containing all the concept names that can be used as labels",
+    "apply_task_concept_map": "bool, whether to use tasks to infer additional concepts",
+    "task_concept_map_file": "str, a JSON file to impute some concepts based on the experimental task name for an fMRI",
+    "apply_rules": "bool, whether to use the following heuristic rules to add additional concepts",
+    "rules": [
+      {
+        "name": "arbitratry rule name",
+        "filter": {
+          "field": "str, field used to select the relevant maps (for example collection ID)",
+          "pattern": "str, matching pattern (regex) for the selected field"
+        },
+        "rule": {
+          "field": "str, additional field used to select the relevant maps (for example map description) or 'ALL'",
+          "pattern": "str, matching pattern (regex) for the selected field",
+          "labels": "str, the comma separated labels to apply if the previous pattern was matched"
+        }
+      }
+    ],
+    "apply_corrections": "bool, whether to remove some concepts based on the following rules",
+    "corrections": [
+      {
+        "name": "arbitratry rule name",
+        "filter": {
+          "field": "str, field used to select the relevant maps (for example collection ID)",
+          "pattern": "str, matching pattern (regex) for the selected field"
+        },
+        "rule": {
+          "field": "str, additional field used to select the relevant maps (for example map description) or 'ALL'",
+          "pattern": "str, matching pattern (regex) for the selected field",
+          "labels": "str, the comma separated labels to remove if the previous pattern was matched"
+        }
+      }
+    ],
+    "apply_remove": "bool, whether to remove some concepts from all maps that are not considered as relevant for the analysis",
+    "to_remove": [
+      "concept name not to be decoded"
+    ],
+    "apply_synonyms": "bool, whether to apply synonymy rules and merge concepts",
+    "synonyms": {
+      "concept name to be replaced": "replacement"
+    },
+    "apply_hypernyms": "bool, whether to apply hypernymy rules and infer parent concepts from others",
+    "hypernyms": {
+      "child concept to match": "parent concept to set to true if child is true"
+    }
+  }
+}

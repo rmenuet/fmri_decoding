@@ -1,0 +1,59 @@
+{
+  "description":           "str, any metadata we wish to be printed as 1st col in the results consolidation report (csv file passed as an argument of the script)",
+
+  "data": {
+    "blacklist":        "dict of arrays, ID of metadata column in Neurovault and forbidden values",
+
+    "meta_file":        "str, path to CSV file with all fMRIs metadata (from Neurovault) used to split TRAIN/TEST and sample",
+    "concepts_file":    "str, path to a text file containing concepts to be decoded separated by commas or new lines",
+    "labels_file":      "str, path to a csv with fMRIs indices in 1st col and comma separated list of concepts in the second",
+    "labels_file_test": "str, same as before for the TEST set, if empty the same csv is used for TRAIN and TEST",
+
+    "features_id_file": "str, path of the pickle file of the 1D numpy array containing the features (brain components or voxels) ID from Neurovault",
+    "features_file":    "str, path of the pickle file of the 2D numpy array containing the features (brain components or voxels) to decode",
+
+    "similarity_mat":   "str or null, path to the CSV of the similarity matrix used for missing labels inference",
+    "clustering_mat":   "str or null, path to the CSV of a clustering matrix used if smoothing='clusters'",
+    "embedding_model":  "str or null, path to a pytorch model that can embed data with the same dimensions as the features",
+    "scaling":          "str, if 'samples' features rows are scaled and centered, if 'features' columns are, if anything else no scaling",
+    "positive_values":  "bool, if true only the positive part of the features is kept"
+  },
+
+  "labels": {
+    "min_train":        "int, minimum number of a label's occurrences in the TRAIN set for it to be kept",
+    "smoothing":        "str or null, kind of label smoothing to apply, either 'cluster' or 'similarity'",
+    "inference":        "str or null, if smoothing='similarity' kind of inference done based on the sim mat: either 'max', 'max_lin', 'max_quad', 'mean', 'mean_lin', 'mean_quad', 'nearest_lin' or 'nearest_flat'",
+    "n_neighbors":      "int or null, if inference='nearest...' number of neighbors to consider",
+    "clustering_ratio": "float in [0,1] or null, if smoothing='cluster' ratio of the target labels derived from clusters",
+    "zero_sim":         "float in [0,1] or null, if inference='*_lin' or '*_quad' the threshold of the linear/quadratic filter on similarities",
+    "transformation":   "str or null, the transformation applied on labels, either 'normalization' or 'thresholding'",
+    "threshold":        "float in [0,1] or null, if transformation='thresholding' the threshold for 0/1 separation"
+  },
+
+  "model_name":         "str, name of the model to be trained",
+
+  "loss":{
+    "group_power":      "float in [0,1], power to be used to define samples wieghts at train time",
+    "loss_func_name":   "str, name of the loss function to use for training"
+  },
+
+  "torch_params": {
+    "search":           "int, number of iteration of RandomGridCV",
+    "splits":           "int, number of folds for grid search CV",
+    "Adam":             "bool, if true Adam, else SGD",
+    "epochs":           "int, num of epochs",
+    "batch_size":       "int, mini-batch size",
+    "kwargs...":        "any parameter supported by classifier init method and not grid searched"
+  },
+
+  "grid_params": [
+    {
+      "kwargs...":      "list of values to be grid searched"
+    }
+  ],
+
+  "evaluation": {
+    "test_IDs":         "list of ints, list of collection IDs to be used for TEST set",
+    "recall@N":         "rank used for recall calculation, if not set a recall@10% will be used"
+  }
+}
