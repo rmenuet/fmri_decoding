@@ -230,7 +230,9 @@ def prepare_collect(global_config=None, verbose=False):
     nv_path    = global_config["nv_path"]
     Path(nv_path).mkdir(exist_ok=True)
     meta_path  = global_config["meta_path"]
+    Path(meta_path).mkdir(exist_ok=True)
     cache_path = global_config["cache_path"]
+    Path(cache_path).mkdir(exist_ok=True)
     nv_file    = cache_path + "nv_meta.p"
     colls_file = meta_path + "colls.csv"
     fmris_file = meta_path + "fmris.csv"
