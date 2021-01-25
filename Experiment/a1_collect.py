@@ -55,7 +55,7 @@ def fetch_nv(repo, nv_file,
                                       data_dir=repo,
                                       mode=mode,
                                       verbose=2)
-        with open(nv_file, 'wb') as f:
+        with open(nv_file, 'wb+') as f:
             pickle.dump(neurovault, f)
     else:
         if verbose:
