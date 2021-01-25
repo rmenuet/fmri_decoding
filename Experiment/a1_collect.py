@@ -23,7 +23,8 @@ from nilearn.datasets import fetch_neurovault
 # ================================
 def fetch_nv(repo, nv_file,
              download=False,
-             verbose=False):
+             verbose=False,
+             mode="offline"):
     """
     Loads neurovault into memory, either downloading it from the web-API or
     loading it from the disk.
@@ -52,7 +53,7 @@ def fetch_nv(repo, nv_file,
                                       collection_terms={},
                                       image_terms={},
                                       data_dir=repo,
-                                      mode="download_new",
+                                      mode=mode,
                                       verbose=2)
         with open(nv_file, 'wb') as f:
             pickle.dump(neurovault, f)
