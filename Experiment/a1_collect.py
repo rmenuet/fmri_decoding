@@ -9,6 +9,7 @@
 # Summary: This script collects fMRIs and metadata from Neurovault server
 #          as well as from local repositories
 # ===================================================================
+from pathlib import Path
 
 # 3rd party modules
 import argparse
@@ -227,6 +228,7 @@ def prepare_collect(global_config=None, verbose=False):
     # --------------
     config = global_config["collect"]
     nv_path    = global_config["nv_path"]
+    Path(nv_path).mkdir(exist_ok=True)
     meta_path  = global_config["meta_path"]
     cache_path = global_config["cache_path"]
     nv_file    = cache_path + "nv_meta.p"

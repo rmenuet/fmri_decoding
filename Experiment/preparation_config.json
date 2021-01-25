@@ -1,6 +1,6 @@
 {
   "nv_path":       "../Data/neurovault/",
-  "cache_path":    "~/cache/",
+  "cache_path":    "../output",
   "mask_file":     "../Data/masks/task_mask.nii.gz",
   "dict_file":     "../Data/atlases/components_1024_task.nii.gz",
   "meta_path":     "../Data/meta/",
