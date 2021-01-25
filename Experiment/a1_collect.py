@@ -237,6 +237,7 @@ def prepare_collect(global_config=None, verbose=False):
     colls_file = meta_path + "colls.csv"
     fmris_file = meta_path + "fmris.csv"
     hcp_file   = config["hcp_tags"]
+    Path(hcp_file).parent.mkdir(exist_ok=True)
     download   = config["download"]
 
     # -----------------------------
