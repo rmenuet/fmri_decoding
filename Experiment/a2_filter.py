@@ -315,6 +315,9 @@ def filter_data(colls_file,
                   .join(proper_mod)
                   .join(kept))
 
+    # First, this was used for debugging purpose. But it actually solves
+    # the problem as the nan are stored in a string format.
+    # Still, it remains an issue.
     colls.to_csv("tmp_colls.csv", index=False)
     fmris.to_csv("tmp_fmris.csv", index=False)
     fmris_meta.to_csv("tmp_fmris_meta.csv", index=False)

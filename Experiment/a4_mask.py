@@ -20,7 +20,7 @@ import nibabel as nib
 from nilearn.input_data import NiftiMasker
 
 # Custom modules
-from meta_fmri.preprocess.mask import mask_batch
+# from meta_fmri.preprocess.mask import mask_batch
 
 
 # =========================
