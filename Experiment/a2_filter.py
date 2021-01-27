@@ -316,7 +316,7 @@ def filter_data(colls_file,
                   .join(kept))
 
     if config["not_temporary"]:
-        temporary = colls["name"].str.contains("temporary collection")
+        temporary = colls["name"].str.contains("temporary collection", na=False)
         if verbose:
             print(">>> Num. of collections excluded because they are"
                   " temporary:",
