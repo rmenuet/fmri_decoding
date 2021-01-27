@@ -315,6 +315,16 @@ def filter_data(colls_file,
                   .join(proper_mod)
                   .join(kept))
 
+    colls.to_csv("tmp_colls.csv", index=False)
+    fmris.to_csv("tmp_fmris.csv", index=False)
+    fmris_meta.to_csv("tmp_fmris_meta.csv", index=False)
+    fmris_all.to_csv("tmp_fmris_all.csv", index=False)
+
+    colls = pd.read_csv("tmp_colls.csv")
+    fmris = pd.read_csv("tmp_fmris.csv")
+    fmris_meta = pd.read_csv("tmp_fmris_meta.csv")
+    fmris_all = pd.read_csv("tmp_fmris_all.csv")
+
     if config["not_temporary"]:
         temporary = colls["name"].str.contains("temporary collection", na=False)
         if verbose:
