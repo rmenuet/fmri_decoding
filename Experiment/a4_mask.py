@@ -79,7 +79,7 @@ def prepare_mask(global_config=None, n_jobs=1, verbose=False):
 
     masker = NiftiMasker(mask_img=mask).fit()
 
-    X = mask_batch(config["input_file"],
+    X = mask_batch(global_config["cache_path"] + config["input_file"],
                    masker,
                    n_jobs=n_jobs,
                    verbose=verbose)
