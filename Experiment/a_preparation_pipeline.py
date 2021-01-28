@@ -10,13 +10,13 @@
 
 import argparse
 import json
-from .a1_collect import prepare_collect
-from .a2_filter import prepare_filter
-from .a3_resample import prepare_resample
-from .a4_mask import prepare_mask
-from .a5_embed import prepare_embed
-from .a6_impute import prepare_impute
-from .a7_label import prepare_label
+from a1_collect import prepare_collect
+from a2_filter import prepare_filter
+from a3_resample import prepare_resample
+from a4_mask import prepare_mask
+from a5_embed import prepare_embed
+from a6_impute import prepare_impute
+from a7_label import prepare_label
 
 
 if __name__ == "__main__":
