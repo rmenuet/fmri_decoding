@@ -90,7 +90,7 @@ def lookup(pattern, df,
               df_explored.columns)
 
     # does the lookup
-    mask = np.column_stack([df_explored[col].str.contains(pattern,
+    mask = np.column_stack([df_explored[col].fillna("").str.contains(pattern,
                                                           case=case,
                                                           regex=regex,
                                                           na=False)
