@@ -25,7 +25,7 @@ from nilearn.datasets import fetch_neurovault
 def fetch_nv(repo, nv_file,
              download=False,
              verbose=False,
-             mode="offline"):
+             mode="download_new"):
     """
     Loads neurovault into memory, either downloading it from the web-API or
     loading it from the disk.

@@ -340,6 +340,11 @@ def prepare_label(global_config=None, verbose=False):
     meta_path       = global_config["meta_path"]
     fmris_meta_file = meta_path + global_config["meta_file"]
 
+    # Add output target.
+    args.output = "../output/a7_label.csv"
+    args.mask_labels_file = "../output/fmris_masked_labels_file.p"
+    args.labels_mat = "../output/labels_mat.csv"
+
     # -------------------------------
     # --- LOAD DATA & INIT FIELDS ---
     # -------------------------------
@@ -472,21 +477,25 @@ def prepare_label(global_config=None, verbose=False):
                          .contains(str(rule["filter"]["pattern"]),
                                    case=False)).values
 
+            not_found_column_flag = False
             if rule["rule"]["field"] == "ALL":
                 label_mask = lookup(str(rule["rule"]["pattern"]),
                                     fmris_train,
                                     case=False)
             else:
-                label_mask = (fmris_train[str(rule["rule"]["field"])]
-                              .astype(str)
-                              .str
-                              .contains(str(rule["rule"]["pattern"]),
-                                        case=False)).values
-
+                if str(rule["rule"]["field"]) in fmris_train.columns:
+                    label_mask = (fmris_train[str(rule["rule"]["field"])]
+                                  .astype(str)
+                                  .str
+                                  .contains(str(rule["rule"]["pattern"]),
+                                            case=False)).values
+                else:
+                    not_found_column_flag = True
+                    label_mask = np.array([False] * len(fmris_train)).astype(bool)
             if verbose:
-                print("    |-> matched",
+                print("    |-> matched ",
                       (rule_mask & label_mask).sum(),
-                      "times")
+                      "times with flag ", not_found_column_flag)
 
             fmris_train.loc[rule_mask & label_mask, "labels_from_rules"] = (
                     fmris_train.loc[rule_mask & label_mask,
