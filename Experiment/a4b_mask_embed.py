@@ -21,10 +21,6 @@ from joblib import Parallel, delayed
 from nilearn.input_data import NiftiMasker
 from sklearn import preprocessing
 
-# Custom modules
-# from meta_fmri.preprocess.mask import mask_batch
-
-
 # =========================
 # === MASKING FUNCTIONS ===
 # =========================

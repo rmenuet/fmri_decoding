@@ -84,6 +84,9 @@ def prepare_mask(global_config=None, n_jobs=1, verbose=False):
                    n_jobs=n_jobs,
                    verbose=verbose)
 
+    # Shouldn't be executed on all NeuroVault.
+    # Prefer running a4b_mask_embed.py that performs step 4 and 5
+    # and avoid storing the large fMRI images
     with open(config["output_file"], 'wb') as f:
         pickle.dump(X, f, protocol=4)
 
