@@ -257,11 +257,16 @@ def prepare_collect(global_config=None, verbose=False):
 
     # Removal of Neurovault's first IBC version (reuploaded in better quality):
     # TODO: migrer dans conf exp
-    fmris = pd.read_csv(fmris_file, low_memory=False, index_col=0)
-    fmris = fmris[fmris["collection_id"] != 2138]
+    FIRST_IBC_COLLECTION_TO_REMOVE = 2138
+    fmris = (
+        pd.read_csv(fmris_file, low_memory=False, index_col=0)
+        .loc[lambda df: df.collection_id != FIRST_IBC_COLLECTION_TO_REMOVE]
+    )
     fmris.to_csv(fmris_file, header=True)
-    colls = pd.read_csv(colls_file, low_memory=False, index_col=0)
-    colls.drop(2138, axis=0, inplace=True)
+    colls = (
+        pd.read_csv(colls_file, low_memory=False, index_col=0)
+        .drop(FIRST_IBC_COLLECTION_TO_REMOVE, axis=0)
+    )
     colls.to_csv(colls_file, header=True)
 
     # ------------------------------------------
