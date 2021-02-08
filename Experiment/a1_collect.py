@@ -50,12 +50,7 @@ def fetch_nv(repo, nv_file,
         if verbose:
             print("...Download from Neurovault API...")
 
-        neurovault = fetch_neurovault(max_images=None,
-                                      collection_terms={},
-                                      image_terms={},
-                                      data_dir=repo,
-                                      mode=mode,
-                                      verbose=2)
+
         with open(nv_file, 'wb+') as f:
             pickle.dump(neurovault, f)
     else:
@@ -71,7 +66,7 @@ def fetch_nv(repo, nv_file,
     return neurovault
 
 
-def load_colls(nv_file,
+def load_colls(neurovault,
                colls_file,
                verbose=False):
     """
@@ -89,10 +84,6 @@ def load_colls(nv_file,
     :return: pandas.DataFrame
         Dataframe with all collections metadata.
     """
-
-    with open(nv_file, 'rb') as f:
-        neurovault = pickle.load(f)
-
     # Build a dataframe from the fetcher's collections metadata
     # (1 row per fMRI)
     colls = pd.DataFrame(neurovault.collections_meta)
@@ -120,13 +111,10 @@ def load_colls(nv_file,
               .head(10),
               "\n")
 
-    colls.to_csv(colls_file, header=True)
-
     return colls
 
 
-def load_fmris(nv_file,
-               fmris_file):
+def load_fmris(neurovault):
     """ Loads fMRIs metadata into a dataframe
 
     :param nv_file: str
@@ -138,10 +126,6 @@ def load_fmris(nv_file,
     :return: pandas.DataFrame
         Dataframe with all fMRIs metadata
     """
-
-    with open(nv_file, 'rb') as f:
-        neurovault = pickle.load(f)
-
     # Build a dataframe from the fetcher's fMRIs metadata
     fmris = pd.DataFrame(neurovault.images_meta)
     fmris.set_index("id", inplace=True)
@@ -150,8 +134,6 @@ def load_fmris(nv_file,
     # Remove linebreaks in descriptions to better handle them as CSV afterwards
     fmris["description"] = fmris["description"].replace("[\\n|\\r]", " ",
                                                         regex=True)
-
-    fmris.to_csv(fmris_file, header=True)
 
     return fmris
 
@@ -190,10 +172,7 @@ def get_hcp_tags(df, task, condition):
     return labels_str[:-1]
 
 
-def add_hcp_tags(fmris_file, hcp_file):
-    # Load fMRIs metadata (as loaded from Neurovault)
-    fmris = pd.read_csv(fmris_file, low_memory=False, index_col=0)
-
+def add_hcp_tags(fmris, hcp_file):
     # Load HCP labels and convert them to booleans
     hcp_meta = pd.read_csv(hcp_file, sep='\t')
     hcp_meta.replace(1.0, True, inplace=True)
@@ -214,8 +193,6 @@ def add_hcp_tags(fmris_file, hcp_file):
             ):
                 fmris.at[idx, "tags_hcp"] = row_hcp["tags"]
 
-    fmris.to_csv(fmris_file, header=True)
-
     return fmris
 
 
@@ -234,40 +211,37 @@ def prepare_collect(global_config=None, verbose=False):
     cache_path = Path(global_config["cache_path"])
     cache_path.mkdir(exist_ok=True)
 
-    nv_file = str(cache_path / "nv_meta.p")
     colls_file = str(meta_path / "colls.csv")
     fmris_file = str(meta_path / "fmris.csv")
 
     hcp_file = global_config["collect"]["hcp_tags"]
-    download = global_config["collect"]["download"]
     download_mode = global_config["collect"]["download_mode"]
 
     # -----------------------------
     # --- FETCH FROM NEUROVAULT ---
     # -----------------------------
     if verbose:
-        print("=" * 30)
-        source = "website" if download else "disk"
-        print(f" > Fetching Neurovault data from the {source}")
+        source = "disk" if download_mode == "offline" else "NeuroVault"
+        print(f" > Fetch fMRIs from {source}")
 
-    fetch_nv(str(nv_path), nv_file, download, verbose, mode=download_mode)
+    neurovault = fetch_neurovault(
+        max_images=None,
+        collection_terms={},
+        image_terms={},
+        data_dir=str(nv_path),
+        mode=download_mode,
+        verbose=2,
+    )
 
-    colls_nv = load_colls(nv_file, colls_file, verbose)
-    fmris_nv = load_fmris(nv_file, fmris_file)
+    neurovault_collections = load_colls(neurovault, colls_file, verbose)
+    neurovault_fmris = load_fmris(neurovault)
 
     # Removal of Neurovault's first IBC version (reuploaded in better quality):
-    # TODO: migrer dans conf exp
     FIRST_IBC_COLLECTION_TO_REMOVE = 2138
-    fmris = (
-        pd.read_csv(fmris_file, low_memory=False, index_col=0)
-        .loc[lambda df: df.collection_id != FIRST_IBC_COLLECTION_TO_REMOVE]
-    )
-    fmris.to_csv(fmris_file, header=True)
-    colls = (
-        pd.read_csv(colls_file, low_memory=False, index_col=0)
-        .drop(FIRST_IBC_COLLECTION_TO_REMOVE, axis=0)
-    )
-    colls.to_csv(colls_file, header=True)
+
+    fmris = neurovault_fmris.loc[lambda df: df.collection_id != FIRST_IBC_COLLECTION_TO_REMOVE]
+
+    colls = neurovault_collections.drop(FIRST_IBC_COLLECTION_TO_REMOVE, axis=0)
 
     # ------------------------------------------
     # --- ADDING HCP TAGS FROM SEPARATE BASE ---
@@ -275,11 +249,16 @@ def prepare_collect(global_config=None, verbose=False):
     if verbose:
         print(" > Adding tags from HCP")
 
-    add_hcp_tags(fmris_file, hcp_file)
+    fmris = add_hcp_tags(fmris, hcp_file)
 
     if verbose:
         print(">>> Data collection OK, {} fMRIs from Neurovault, {} collections"
-              .format(len(fmris_nv), len(colls_nv)))
+              .format(len(fmris), len(colls)))
+
+    # Final dumps
+    colls.to_csv(colls_file, header=True)
+    fmris.to_csv(fmris_file, header=True)
+
 
 
 # execute only if run as a script
