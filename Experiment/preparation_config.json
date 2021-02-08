@@ -8,6 +8,7 @@
 
   "collect": {
     "download": true,
+    "download_mode": "offline",
     "hcp_tags": "../Data/labels/hcp_tags.csv"
   },
 

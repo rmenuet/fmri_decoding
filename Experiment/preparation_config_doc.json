@@ -8,6 +8,7 @@
 
   "collect": {
     "download": "bool, whether to (re)download data, if false uses a dump file stored in the cahe folder",
+    "download_mode": "str, one of {'download_new', 'overwrite', 'offline'}. When to fetch an image from the server rather than the local disk.",
     "hcp_tags": "str, CSV file with the mapping between HCP metadata (collection 4337) and the corresponding labels (cognitive concepts)"
   },
 

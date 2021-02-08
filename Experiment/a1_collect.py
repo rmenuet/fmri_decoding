@@ -226,31 +226,31 @@ def prepare_collect(global_config=None, verbose=False):
     # --------------
     # --- CONFIG ---
     # --------------
-    config = global_config["collect"]
-    nv_path    = global_config["nv_path"]
-    Path(nv_path).mkdir(exist_ok=True)
-    meta_path  = global_config["meta_path"]
-    Path(meta_path).mkdir(exist_ok=True)
-    cache_path = global_config["cache_path"]
-    Path(cache_path).mkdir(exist_ok=True)
-    nv_file    = cache_path + "nv_meta.p"
-    colls_file = meta_path + "colls.csv"
-    fmris_file = meta_path + "fmris.csv"
-    hcp_file   = config["hcp_tags"]
-    Path(hcp_file).parent.mkdir(exist_ok=True)
-    download   = config["download"]
+
+    nv_path = Path(global_config["nv_path"])
+    nv_path.mkdir(exist_ok=True)
+    meta_path = Path(global_config["meta_path"])
+    meta_path.mkdir(exist_ok=True)
+    cache_path = Path(global_config["cache_path"])
+    cache_path.mkdir(exist_ok=True)
+
+    nv_file = str(cache_path / "nv_meta.p")
+    colls_file = str(meta_path / "colls.csv")
+    fmris_file = str(meta_path / "fmris.csv")
+
+    hcp_file = global_config["collect"]["hcp_tags"]
+    download = global_config["collect"]["download"]
+    download_mode = global_config["collect"]["download_mode"]
 
     # -----------------------------
     # --- FETCH FROM NEUROVAULT ---
     # -----------------------------
     if verbose:
         print("=" * 30)
-        if download:
-            print(" > Fetching Neurovault data from the website")
-        else:
-            print(" > Fetching Neurovault data from the disk")
+        source = "website" if download else "disk"
+        print(f" > Fetching Neurovault data from the {source}")
 
-    fetch_nv(nv_path, nv_file, download, verbose)
+    fetch_nv(str(nv_path), nv_file, download, verbose, mode=download_mode)
 
     colls_nv = load_colls(nv_file, colls_file, verbose)
     fmris_nv = load_fmris(nv_file, fmris_file)
