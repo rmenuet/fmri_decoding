@@ -14,33 +14,34 @@
 # sys & IO
 import argparse
 import datetime
+import json
 import os
 import pickle
-from glob import glob
 import shutil
+from glob import glob
 
 # data management
-import json
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import tqdm
 from sklearn import preprocessing
-import matplotlib.pyplot as plt
 
 # ML
-from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.svm import SVC
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from sklearn.metrics import roc_auc_score
-from sklearn.base import BaseEstimator
 import torch
+from sklearn.base import BaseEstimator
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.svm import SVC
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import WeightedRandomSampler
 import torch.nn.init as init
 
 # custom modules
-from .a7_label import dumb_tagger
-from .tools import (
+from a7_label import dumb_tagger
+from tools import (
     mask_rows,
     mkdir,
     yes_or_no,
@@ -50,7 +51,7 @@ from .tools import (
     recall_n,
     mean_auc
 )
-from .models import (
+from models import (
     ModelLinear,
     ModelLogReg,
     ModelLogReg1NonLin,
@@ -422,7 +423,7 @@ class PytorchEstimator(BaseEstimator):
         #
         # === Training ===
         #
-        iterator = range(self.epochs)
+        iterator = tqdm.trange(self.epochs)
 
         if (not self.batch_size) | (self.batch_size == -1):
             batch_size = len(X)
@@ -445,7 +446,7 @@ class PytorchEstimator(BaseEstimator):
                             batch_size=batch_size,
                             sampler=sampler,
                             shuffle=sampler is None,
-                            num_workers=n_jobs,
+                            num_workers=0,
                             # pin_memory=not self.sample_gpu,
                             timeout=120)
 
@@ -489,6 +490,7 @@ class PytorchEstimator(BaseEstimator):
 
             # Save loss every *print_freq* epoch
             if self.verbose:
+
                 if not epoch % print_freq:
                     losses_train[epoch // print_freq] = current_loss
 

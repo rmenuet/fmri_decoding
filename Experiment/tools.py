@@ -8,6 +8,9 @@ from nilearn.plotting import plot_stat_map, plot_glass_brain
 
 
 # GENERIC HELPER FUNCTIONS
+from sklearn.metrics import roc_auc_score
+
+
 def one_compact_line(string):
     """
     Replaces all multiples spaces/tabs/line-returns by a single space
