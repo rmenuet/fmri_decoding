@@ -180,10 +180,12 @@ def prepare_collect(global_config=None, verbose=False):
     neurovault_collections = load_colls(neurovault, verbose)
     neurovault_fmris = load_fmris(neurovault)
 
-    # Removal of Neurovault's first IBC version (reuploaded in better quality):
+    # Removal of Neurovault's first and latest IBC version (to match Romuald's original data):
     FIRST_IBC_COLLECTION_TO_REMOVE = 2138
-    fmris = neurovault_fmris.loc[lambda df: df.collection_id != FIRST_IBC_COLLECTION_TO_REMOVE]
+    SECOND_IBC_COLLECTION_TO_REMOVE = 6618
+    fmris = neurovault_fmris.loc[lambda df: ~df.collection_id.isin([FIRST_IBC_COLLECTION_TO_REMOVE, SECOND_IBC_COLLECTION_TO_REMOVE])]
     colls = neurovault_collections.drop(FIRST_IBC_COLLECTION_TO_REMOVE, axis=0)
+    colls = colls.drop(SECOND_IBC_COLLECTION_TO_REMOVE, axis=0)
 
     if verbose:
         print(" > Adding tags from HCP")
