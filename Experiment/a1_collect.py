@@ -127,7 +127,7 @@ def add_hcp_tags(fmris, hcp_file):
         tags = get_hcp_tags(hcp_meta, row['Task'], row['Condition'])
         hcp_meta.at[idx, "tags"] = tags
 
-    fmris["tags_hcp"] = ""
+    fmris = fmris.assign(tags_hcp="")
     for idx, row in fmris[fmris["collection_id"] == 4337].iterrows():
         for idx_hcp, row_hcp in hcp_meta.iterrows():
             if (
@@ -181,11 +181,9 @@ def prepare_collect(global_config=None, verbose=False):
     neurovault_fmris = load_fmris(neurovault)
 
     # Removal of Neurovault's first and latest IBC version (to match Romuald's original data):
-    FIRST_IBC_COLLECTION_TO_REMOVE = 2138
-    SECOND_IBC_COLLECTION_TO_REMOVE = 6618
-    fmris = neurovault_fmris.loc[lambda df: ~df.collection_id.isin([FIRST_IBC_COLLECTION_TO_REMOVE, SECOND_IBC_COLLECTION_TO_REMOVE])]
-    colls = neurovault_collections.drop(FIRST_IBC_COLLECTION_TO_REMOVE, axis=0)
-    colls = colls.drop(SECOND_IBC_COLLECTION_TO_REMOVE, axis=0)
+    IBC_DUPLICATES_TO_REMOVE = [2138, 6618]
+    fmris = neurovault_fmris.loc[lambda df: ~df.collection_id.isin(IBC_DUPLICATES_TO_REMOVE)]
+    colls = neurovault_collections.drop(IBC_DUPLICATES_TO_REMOVE, axis=0)
 
     if verbose:
         print(" > Adding tags from HCP")
@@ -210,7 +208,7 @@ if __name__ == "__main__":
         epilog='''Example: python a1_collect.py -C config.json -v'''
     )
     parser.add_argument("-C", "--configuration",
-                        default="./config.json",
+                        default="./preparation_config.json",
                         help="Path of the JSON configuration file")
     parser.add_argument("-v", "--verbose",
                         action="store_true",

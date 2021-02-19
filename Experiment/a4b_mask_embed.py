@@ -197,7 +197,7 @@ if __name__ == "__main__":
         epilog='''Example: python a4_mask.py -C config.json -j 8 -v'''
     )
     parser.add_argument("-C", "--configuration",
-                        default="./config.json",
+                        default="./preparation_config.json",
                         help="Path of the JSON configuration file")
     parser.add_argument("-j", "--jobs",
                         type=int,

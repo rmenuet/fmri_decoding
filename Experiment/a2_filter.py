@@ -10,10 +10,12 @@
 # ===================================================================
 
 # 3rd party modules
-from os import stat
 import argparse
-from pprint import pprint
 import json
+from functools import partial
+from os import stat
+from pprint import pprint
+
 import numpy as np
 import pandas as pd
 from nibabel import load as nib_load
@@ -133,32 +135,16 @@ def filter_data(colls_file,
         print(">>> Starting filtering from {} fMRIs",
               len(fmris))
 
-    # === per-fMRI filtering ===
-
-    # Initialize new dataframe from additional metadata
-    fmris_meta = pd.DataFrame(index=fmris.index)
-
-    # Initialize some columns
-    fmris_meta["res_x"] = 0.0
-    fmris_meta["res_y"] = 0.0
-    fmris_meta["res_z"] = 0.0
-    fmris_meta["dim_x"] = 0
-    fmris_meta["dim_y"] = 0
-    fmris_meta["dim_z"] = 0
-    fmris_meta["absolute_path"] = fmris["absolute_path"]
-
     # Nifty files metadata extraction
     if verbose:
         print("... extraction from Nifty files ...")
 
-    fmris_meta_split = np.array_split(fmris, n_jobs)
+    fmris_meta_split = np.array_split(fmris, n_jobs * 3)
 
-    def extract(x):
-        return extract_meta(x, config)
-
-    results = (Parallel
-               (n_jobs=n_jobs, verbose=1, backend="threading")
-               (delayed(extract)(x) for x in fmris_meta_split))
+    results = (
+        Parallel(n_jobs=n_jobs, verbose=1, backend="threading")
+        (delayed(partial(extract_meta, config=config))(x) for x in fmris_meta_split)
+    )
 
     fmris_meta = pd.concat(results)
 
@@ -251,51 +237,53 @@ def filter_data(colls_file,
 
     # === per collection consolidation ===
 
+    collection_grouped_fmris_all = fmris_all.groupby("collection_id")
+
     has_cog_paradigm = fmris_all.groupby("collection_id")["has_cog_paradigm"].sum()
     has_cog_paradigm = has_cog_paradigm.astype(int)
 
-    has_tags = fmris_all.groupby("collection_id")["has_tags"].sum()
+    has_tags = collection_grouped_fmris_all["has_tags"].sum()
     has_tags = has_tags.astype(int)
 
-    has_task = fmris_all.groupby("collection_id")["has_task"].sum()
+    has_task = collection_grouped_fmris_all["has_task"].sum()
     has_task = has_task.astype(int)
 
-    has_cont = fmris_all.groupby("collection_id")["has_cont"].sum()
+    has_cont = collection_grouped_fmris_all["has_cont"].sum()
     has_cont = has_cont.astype(int)
 
-    has_desc = fmris_all.groupby("collection_id")["has_desc"].sum()
+    has_desc = collection_grouped_fmris_all["has_desc"].sum()
     has_desc = has_desc.astype(int)
 
-    has_mod = fmris_all.groupby("collection_id")["has_mod"].sum()
+    has_mod = collection_grouped_fmris_all["has_mod"].sum()
     has_mod = has_mod.astype(int)
 
-    proper_mod = fmris_all.groupby("collection_id")["proper_mod"].sum()
+    proper_mod = collection_grouped_fmris_all["proper_mod"].sum()
     proper_mod = proper_mod.astype(int)
 
-    not_duplicate = fmris_all.groupby("collection_id")["not_duplicate"].sum()
+    not_duplicate = collection_grouped_fmris_all["not_duplicate"].sum()
     not_duplicate = not_duplicate.astype(int)
 
-    enough_coverage = fmris_all.groupby("collection_id")["enough_coverage"].sum()
+    enough_coverage = collection_grouped_fmris_all["enough_coverage"].sum()
     enough_coverage = enough_coverage.astype(int)
 
-    enough_values = fmris_all.groupby("collection_id")["enough_values"].sum()
+    enough_values = collection_grouped_fmris_all["enough_values"].sum()
     enough_values = enough_values.astype(int)
 
-    centered = fmris_all.groupby("collection_id")["centered"].sum()
+    centered = collection_grouped_fmris_all["centered"].sum()
     centered = centered.astype(int)
 
-    unthresholded = fmris_all.groupby("collection_id")["unthresholded"].sum()
+    unthresholded = collection_grouped_fmris_all["unthresholded"].sum()
     unthresholded = unthresholded.astype(int)
 
-    big_enough = fmris_all.groupby("collection_id")["big_enough"].sum()
+    big_enough = collection_grouped_fmris_all["big_enough"].sum()
     big_enough = big_enough.astype(int)
-    small_enough = fmris_all.groupby("collection_id")["small_enough"].sum()
+    small_enough = collection_grouped_fmris_all["small_enough"].sum()
     small_enough = small_enough.astype(int)
 
-    proper_type = fmris_all.groupby("collection_id")["proper_type"].sum()
+    proper_type = collection_grouped_fmris_all["proper_type"].sum()
     proper_type = proper_type.astype(int)
 
-    kept = fmris_all.groupby("collection_id")["kept"].sum()
+    kept = collection_grouped_fmris_all["kept"].sum()
     kept = kept.astype(int)
 
     colls = (colls.join(has_cog_paradigm)
@@ -314,19 +302,6 @@ def filter_data(colls_file,
                   .join(has_mod)
                   .join(proper_mod)
                   .join(kept))
-
-    # First, this was used for debugging purpose. But it actually solves
-    # the problem as the nan are stored in a string format.
-    # Still, it remains an issue.
-    colls.to_csv("tmp_colls.csv", index=False)
-    fmris.to_csv("tmp_fmris.csv", index=False)
-    fmris_meta.to_csv("tmp_fmris_meta.csv", index=False)
-    fmris_all.to_csv("tmp_fmris_all.csv", index=False)
-
-    colls = pd.read_csv("tmp_colls.csv")
-    fmris = pd.read_csv("tmp_fmris.csv")
-    fmris_meta = pd.read_csv("tmp_fmris_meta.csv")
-    fmris_all = pd.read_csv("tmp_fmris_all.csv")
 
     if config["not_temporary"]:
         temporary = colls["name"].str.contains("temporary collection", na=False)
@@ -389,36 +364,36 @@ def prepare_filter(global_config=None, n_jobs=1, verbose=False):
     # -----------------
     # --- FILTERING ---
     # -----------------
-    colls, fmris, n_kept_colls, n_kept_fmris = \
-        filter_data(colls_file,
-                    fmris_file,
-                    fmris_meta_file,
-                    config, n_jobs,
-                    verbose)
+    colls, fmris, n_kept_colls, n_kept_fmris = filter_data(
+        colls_file,
+        fmris_file,
+        fmris_meta_file,
+        config, n_jobs,
+        verbose,
+    )
 
     # --------------------------------
     # --- ADDITIONAL METADATA SAVE ---
     # --------------------------------
-    n_cog_params = (fmris
-                    .groupby("collection_id")
+
+    collection_grouped_fmris = fmris.groupby("collection_id")
+
+    n_cog_params = (collection_grouped_fmris
                     ["cognitive_paradigm_cogatlas"]
                     .nunique())
     n_cog_params.name = "n_cog_params"
     n_cog_params = n_cog_params.astype(int)
-    cog_params = (fmris
-                  .groupby("collection_id")
+    cog_params = (collection_grouped_fmris
                   ["cognitive_paradigm_cogatlas"]
                   .unique())
     cog_params.name = "cog_params"
 
-    n_contrasts = (fmris
-                   .groupby("collection_id")
+    n_contrasts = (collection_grouped_fmris
                    ["contrast_definition"]
                    .nunique())
     n_contrasts.name = "n_contrasts"
     n_contrasts = n_contrasts.astype(int)
-    contrasts = (fmris
-                 .groupby("collection_id")
+    contrasts = (collection_grouped_fmris
                  ["contrast_definition"]
                  .unique())
     contrasts.name = "contrasts"
@@ -430,26 +405,34 @@ def prepare_filter(global_config=None, n_jobs=1, verbose=False):
 
     colls.to_csv(colls_meta_file)
 
-    fmris_per_task = (fmris.groupby("cognitive_paradigm_cogatlas")
-                           .size()
-                           .sort_values(ascending=False))
+    cognitive_paradigm_grouped_fmris = fmris.groupby("cognitive_paradigm_cogatlas")
 
-    fmris_per_task_kept = (fmris[fmris["kept"]]
-                           .groupby("cognitive_paradigm_cogatlas")
-                           .size()
-                           .sort_values(ascending=False))
+    fmris_per_task = (
+        cognitive_paradigm_grouped_fmris
+        .size()
+        .sort_values(ascending=False)
+    )
 
-    colls_per_task = (fmris
-                      .groupby("cognitive_paradigm_cogatlas")
-                      ["collection_id"]
-                      .nunique()
-                      .sort_values(ascending=False))
+    colls_per_task = (
+        cognitive_paradigm_grouped_fmris["collection_id"]
+        .nunique()
+        .sort_values(ascending=False)
+    )
 
-    colls_per_task_kept = (fmris[fmris["kept"]]
-                           .groupby("cognitive_paradigm_cogatlas")
-                           ["collection_id"]
-                           .nunique()
-                           .sort_values(ascending=False))
+    fmris_kept = fmris[fmris["kept"]]
+    cognitive_paradigm_grouped_fmris_kept = fmris_kept.groupby("cognitive_paradigm_cogatlas")
+
+    fmris_per_task_kept = (
+        cognitive_paradigm_grouped_fmris_kept
+        .size()
+        .sort_values(ascending=False)
+    )
+
+    colls_per_task_kept = (
+        cognitive_paradigm_grouped_fmris_kept["collection_id"]
+        .nunique()
+        .sort_values(ascending=False)
+    )
 
     max_fmris_per_task = (fmris
                           .groupby(["cognitive_paradigm_cogatlas",
@@ -459,7 +442,7 @@ def prepare_filter(global_config=None, n_jobs=1, verbose=False):
                           .max()
                           .sort_values(ascending=False))
 
-    max_fmris_per_task_kept = (fmris[fmris["kept"]]
+    max_fmris_per_task_kept = (fmris_kept
                                .groupby(["cognitive_paradigm_cogatlas",
                                          "collection_id"])
                                .size()
@@ -490,7 +473,7 @@ if __name__ == "__main__":
         epilog='''Example: python a2_filter.py -v -j 4'''
     )
     parser.add_argument("-C", "--configuration",
-                        default="./config.json",
+                        default="./preparation_config.json",
                         help="Path of the JSON configuration file")
     parser.add_argument("-j", "--jobs",
                         type=int,

@@ -4,7 +4,7 @@
   "data": {
     "meta_file":        "../Data/results/fmris_meta.csv",
     "concepts_file":    "../Data/labels/cogatlas_concepts.txt",
-    "labels_file":      "../output/a7_label_no_task_syn_hyp.csv",
+    "labels_file":      "../output/a7_label_all.csv",
     "blacklist":        {"collection_id": [4343]},
 
     "features_file":    "fmris_emb_imp.p",

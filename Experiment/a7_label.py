@@ -12,9 +12,11 @@
 import argparse
 import json
 import pickle
+import re
+
 import numpy as np
 import pandas as pd
-import re
+import tqdm
 
 
 def intersection(lst1, lst2):
@@ -211,7 +213,7 @@ def vocab_tagger(vocab, df,
     """
     df_labelled = df
 
-    for tag in vocab:
+    for tag in tqdm.tqdm(vocab):
         df_labelled = unit_tagger(
             tag, df_labelled,
             tag=None, label_col=label_col, reset=reset,
@@ -332,6 +334,21 @@ def dumb_tagger(df,
     return df_res
 
 
+def remove_contrast_term_from_column(df, target_column, contrast_regex):
+    """Search potential negative contrast term based on contrast regex and remove it"""
+    return df.assign(**{
+        target_column: lambda df: (
+            df[target_column]
+            .astype(str)
+            .str.lower()
+            .str.split(contrast_regex)
+            .apply(lambda x: (
+                "" if type(x) is not list else x[0]
+            ))
+        )
+    })
+
+
 def prepare_label(global_config=None, verbose=False):
     # --------------
     # --- CONFIG ---
@@ -350,8 +367,10 @@ def prepare_label(global_config=None, verbose=False):
     # --- LOAD DATA & INIT FIELDS ---
     # -------------------------------
     # get fMRIs metadata from where to extract labels
-    fmris = pd.read_csv(fmris_meta_file, low_memory=False, index_col=0)
-    fmris_kept = fmris.loc[fmris["kept"]]
+    fmris_kept = (
+        pd.read_csv(fmris_meta_file, low_memory=False, index_col=0)
+        .loc[lambda df: df.kept]
+    )
 
     print("> total number of fMRIs to be labelled =", len(fmris_kept))
 
@@ -363,12 +382,14 @@ def prepare_label(global_config=None, verbose=False):
         labels_from_tasks="",
         labels_from_rules="",
     )
-    fmris_train = (fmris_kept.loc[~fmris_kept["collection_id"]
-                   .isin(config["id_test"])]
-                   .copy())
-    fmris_test = (fmris_kept.loc[fmris_kept["collection_id"]
-                  .isin(config["id_test"])]
-                  .copy())
+    fmris_train = (
+        fmris_kept.loc[~fmris_kept["collection_id"].isin(config["id_test"])]
+       .copy()
+    )
+    fmris_test = (
+        fmris_kept.loc[fmris_kept["collection_id"].isin(config["id_test"])]
+        .copy()
+    )
 
     # -------------------------------
     # --- EXTRACT ORIGINAL LABELS ---
@@ -383,44 +404,22 @@ def prepare_label(global_config=None, verbose=False):
     if verbose:
         print("  > Removing negative parts in contrasts, names and file names")
 
-    fmris_train["contrast_definition"] = \
-        fmris_train["contrast_definition"].str.lower()
-    fmris_train["contrast_definition"] = (
-        fmris_train["contrast_definition"]
-        .astype(str)
-        .str
-        .split(r">|\s-\s|vs|versus|minus|[\s_-]non?[\s_-]|neg[\s_-]")
-        .apply(
-            lambda x:
-                "" if type(x) is not list
-                else x[0]
-        )
+    fmris_train = remove_contrast_term_from_column(
+        fmris_train,
+        target_column="contrast_definition",
+        contrast_regex=r">|\s-\s|vs|versus|minus|[\s_-]non?[\s_-]|neg[\s_-]",
     )
 
-    fmris_train["name"] = fmris_train["name"].str.lower()
-    fmris_train["name"] = (
-        fmris_train["name"]
-        .astype(str)
-        .str
-        .split(r">|\s-\s|vs|versus|minus|[ _-]non?[\s_-]|[ _-]neg[\s_-]")
-        .apply(
-            lambda x:
-                "" if type(x) is not list
-                else x[0]
-        )
+    fmris_train = remove_contrast_term_from_column(
+        fmris_train,
+        target_column="name",
+        contrast_regex=r">|\s-\s|vs|versus|minus|[ _-]non?[\s_-]|[ _-]neg[\s_-]",
     )
 
-    fmris_train["file"] = fmris_train["file"].str.lower()
-    fmris_train["file"] = (
-        fmris_train["file"]
-        .astype(str)
-        .str
-        .split(r"vs_|versus_|minus_|[ _-]neg_|[ _-]non?_")
-        .apply(
-            lambda x:
-                "" if type(x) is not list
-                else x[0]
-        )
+    fmris_train = remove_contrast_term_from_column(
+        fmris_train,
+        target_column="file",
+        contrast_regex=r"vs_|versus_|minus_|[ _-]neg_|[ _-]non?_",
     )
 
     # Get any phrase matching a CognitiveAtlas concepts in fMRI tags
