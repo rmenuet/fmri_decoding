@@ -139,3 +139,8 @@ cython_debug/
 
 # IDE
 .idea/
+
+# Data folders
+Data/atlases
+Data/neurovault
+Data/meta
