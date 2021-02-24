@@ -194,6 +194,8 @@ def prepare_collect(global_config=None, verbose=False):
         print(">>> Data collection OK, {} fMRIs from Neurovault, {} collections"
               .format(len(fmris), len(colls)))
 
+    # TODO: Add DiFuMo atlas fetching when Nilearn 0.7.1 is published
+
     # Final dumps
     colls.to_csv(colls_file, header=True)
     fmris.to_csv(fmris_file, header=True)

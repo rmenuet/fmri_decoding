@@ -451,6 +451,7 @@ def prepare_label(global_config=None, verbose=False):
         print("  > adding labels from regexp in all fields "
               "(except contrasts and tags)")
 
+    # TODO: parallel compute
     fmris_train = vocab_tagger(
         vocab,
         fmris_train,
