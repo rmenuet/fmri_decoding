@@ -13,10 +13,12 @@ import argparse
 import json
 import pickle
 import re
+from functools import partial
 
 import numpy as np
 import pandas as pd
 import tqdm
+from joblib import Parallel, delayed
 
 
 def intersection(lst1, lst2):
@@ -213,7 +215,7 @@ def vocab_tagger(vocab, df,
     """
     df_labelled = df
 
-    for tag in tqdm.tqdm(vocab):
+    for tag in vocab:
         df_labelled = unit_tagger(
             tag, df_labelled,
             tag=None, label_col=label_col, reset=reset,
@@ -224,6 +226,16 @@ def vocab_tagger(vocab, df,
         )
 
     return df_labelled
+
+
+def parallel_vocab_tagger(n_jobs, vocab, df, **kwargs):
+    """Parallel version of the `vocab_tagger` function."""
+    df_splits = np.array_split(df, n_jobs * 3)
+
+    vocab_tagger_function = partial(vocab_tagger, vocab=vocab, **kwargs)
+    df_splits_processed = Parallel(n_jobs)(delayed(vocab_tagger_function)(df=df) for df in df_splits)
+
+    return pd.concat(df_splits_processed, axis=0)
 
 
 def verif_labels(labels, vocab):
@@ -342,14 +354,75 @@ def remove_contrast_term_from_column(df, target_column, contrast_regex):
             .astype(str)
             .str.lower()
             .str.split(contrast_regex)
-            .apply(lambda x: (
-                "" if type(x) is not list else x[0]
-            ))
+            .apply(lambda x: ("" if type(x) is not list else x[0]))
         )
     })
 
 
-def prepare_label(global_config=None, verbose=False):
+def remove_duplicate_labels(fmris, vocab, n_jobs):
+    def _remove_duplicates(fmris, vocab):
+        verif_labels_for_vocab = partial(verif_labels, vocab=vocab)
+
+        return fmris.assign(
+            labels_no_heuristic=lambda df: df.labels_no_heuristic.astype(str).apply(verif_labels_for_vocab),
+            labels_no_task=lambda df: df.labels_no_task.astype(str).apply(verif_labels_for_vocab),
+            labels_all=lambda df: df.labels_all.astype(str).apply(verif_labels_for_vocab),
+        )
+
+    df_splits = np.array_split(fmris, n_jobs * 3)
+
+    df_splits_processed = Parallel(n_jobs)(
+        delayed(partial(_remove_duplicates, vocab=vocab))(fmris=df) for df in df_splits
+    )
+
+    return pd.concat(df_splits_processed, axis=0)
+
+
+def encompass_labels_from_manual_hierarchy(fmris, config, n_jobs):
+    def _encompass_labels(fmris, config):
+        for _ in range(4):
+            # Run 4 times because of hypernymy graph max depth
+            for word, hypernyms in config["hypernyms"].items():
+                fmris["labels_no_heuristic"] = (
+                    fmris["labels_no_heuristic"]
+                        .str
+                        .split(r"\s?,\s?")
+                        .apply(lambda x:
+                               replace_matching(x, word, word + "," + hypernyms))
+                        .str
+                        .join(",")
+                )
+                fmris["labels_no_task"] = (
+                    fmris["labels_no_task"]
+                        .str
+                        .split(r"\s?,\s?")
+                        .apply(lambda x:
+                               replace_matching(x, word, word + "," + hypernyms))
+                        .str
+                        .join(",")
+                )
+                fmris["labels_all"] = (
+                    fmris["labels_all"]
+                        .str
+                        .split(r"\s?,\s?")
+                        .apply(lambda x:
+                               replace_matching(x, word, word + "," + hypernyms))
+                        .str
+                        .join(",")
+                )
+
+        return fmris
+
+    df_splits = np.array_split(fmris, n_jobs * 3)
+
+    df_splits_processed = Parallel(n_jobs)(
+        delayed(partial(_encompass_labels, config=config))(fmris=df) for df in df_splits
+    )
+
+    return pd.concat(df_splits_processed, axis=0)
+
+
+def prepare_label(global_config=None, n_jobs=1, verbose=False):
     # --------------
     # --- CONFIG ---
     # --------------
@@ -389,6 +462,7 @@ def prepare_label(global_config=None, verbose=False):
     fmris_test = (
         fmris_kept.loc[fmris_kept["collection_id"].isin(config["id_test"])]
         .copy()
+        .assign(tags=lambda df: df.tags.str.replace("_", " "))
     )
 
     # -------------------------------
@@ -426,10 +500,10 @@ def prepare_label(global_config=None, verbose=False):
     if verbose:
         print("  > adding labels from tags")
 
-    fmris_train = vocab_tagger(vocab, fmris_train,
+    fmris_train = parallel_vocab_tagger(n_jobs, vocab, fmris_train,
                                label_col="labels_from_tags",
                                col_white_list=["tags", ])
-    fmris_test = vocab_tagger(vocab, fmris_test,
+    fmris_test = parallel_vocab_tagger(n_jobs, vocab, fmris_test,
                               label_col="labels_from_tags",
                               col_white_list=["tags", ])
 
@@ -437,7 +511,8 @@ def prepare_label(global_config=None, verbose=False):
     if verbose:
         print("  > labelling from contrasts")
 
-    fmris_train = vocab_tagger(
+    fmris_train = parallel_vocab_tagger(
+        n_jobs,
         vocab,
         fmris_train,
         label_col="labels_from_contrasts",
@@ -451,8 +526,8 @@ def prepare_label(global_config=None, verbose=False):
         print("  > adding labels from regexp in all fields "
               "(except contrasts and tags)")
 
-    # TODO: parallel compute
-    fmris_train = vocab_tagger(
+    fmris_train = parallel_vocab_tagger(
+        n_jobs,
         vocab,
         fmris_train,
         label_col="labels_from_all",
@@ -555,21 +630,8 @@ def prepare_label(global_config=None, verbose=False):
     # Verify that all concepts are in the vocabulary and deduplicate them
     if verbose:
         print("  > Removing duplicate labels (before syn/hyp completion)")
-    fmris_kept["labels_no_heuristic"] = (
-        fmris_kept["labels_no_heuristic"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
-    fmris_kept["labels_no_task"] = (
-        fmris_kept["labels_no_task"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
-    fmris_kept["labels_all"] = (
-        fmris_kept["labels_all"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
+
+    fmris_kept = remove_duplicate_labels(fmris_kept, vocab, n_jobs=n_jobs)
 
     if config["apply_corrections"]:
         if verbose:
@@ -681,55 +743,13 @@ def prepare_label(global_config=None, verbose=False):
         if verbose:
             print("  > Infering encompassing labels based on manual hierarchy")
 
-        for _ in range(4):
-            # Run 4 times because of hypernymy graph max depth
-            for word, hypernyms in config["hypernyms"].items():
-                fmris_kept["labels_no_heuristic"] = (
-                    fmris_kept["labels_no_heuristic"]
-                    .str
-                    .split(r"\s?,\s?")
-                    .apply(lambda x:
-                        replace_matching(x, word, word + "," + hypernyms))
-                    .str
-                    .join(",")
-                )
-                fmris_kept["labels_no_task"] = (
-                    fmris_kept["labels_no_task"]
-                    .str
-                    .split(r"\s?,\s?")
-                    .apply(lambda x:
-                        replace_matching(x, word, word + "," + hypernyms))
-                    .str
-                    .join(",")
-                )
-                fmris_kept["labels_all"] = (
-                    fmris_kept["labels_all"]
-                    .str
-                    .split(r"\s?,\s?")
-                    .apply(lambda x:
-                        replace_matching(x, word, word + "," + hypernyms))
-                    .str
-                    .join(",")
-                )
+        fmris_kept = encompass_labels_from_manual_hierarchy(fmris_kept, config, n_jobs)
 
     # Verify that all concepts are in the vocabulary and deduplicate them
     if verbose:
         print("  > Removing duplicate labels (after syn/hyp completion)")
-    fmris_kept["labels_no_heuristic"] = (
-        fmris_kept["labels_no_heuristic"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
-    fmris_kept["labels_no_task"] = (
-        fmris_kept["labels_no_task"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
-    fmris_kept["labels_all"] = (
-        fmris_kept["labels_all"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
+
+    remove_duplicate_labels(fmris_kept, vocab, n_jobs=n_jobs)
 
     # Save result as CSV
     fmris_kept["labels_no_heuristic"].to_csv(f"{args.output[:-4]}_syn_hyp.csv", header=True)
@@ -781,6 +801,10 @@ if __name__ == "__main__":
     parser.add_argument("-C", "--config",
                         default="./config.json",
                         help="Path of the JSON config file")
+    parser.add_argument("-j", "--jobs",
+                        type=int,
+                        default=1,
+                        help="Number of jobs")
     parser.add_argument("-v", "--verbose",
                         action="store_true",
                         help="Activates (many) debugging outputs")
@@ -790,4 +814,4 @@ if __name__ == "__main__":
     with open(args.config) as f:
         global_config = json.load(f)
 
-    prepare_label(global_config, args.verbose)
+    prepare_label(global_config, args.jobs, args.verbose)
