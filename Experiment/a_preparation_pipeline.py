@@ -13,8 +13,7 @@ import json
 from a1_collect import prepare_collect
 from a2_filter import prepare_filter
 from a3_resample import prepare_resample
-from a4_mask import prepare_mask
-from a5_embed import prepare_embed
+from a4b_mask_embed import prepare_mask, prepare_embed
 from a6_impute import prepare_impute
 from a7_label import prepare_label
 
@@ -52,12 +51,12 @@ if __name__ == "__main__":
     print("=       RESAMPLING       =")
     prepare_resample(global_config, args.jobs, args.verbose)
     print("=         MASKING        =")
-    prepare_mask(global_config, args.jobs, args.verbose)
+    fmris_masked = prepare_mask(global_config, args.jobs, args.verbose)
     print("=        EMBEDDING       =")
-    prepare_embed(global_config, args.verbose)
+    prepare_embed(fmris_masked, global_config, args.verbose)
     print("=       IMPUTATION       =")
-    prepare_impute(global_config, args.verbose)
+    prepare_impute(global_config)
     print("=    LABELS EXTRACTION   =")
-    prepare_label(global_config, args.verbose)
+    prepare_label(global_config, args.jobs, args.verbose)
 
     print("=== PREPARATION FINISHED ===")
