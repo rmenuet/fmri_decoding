@@ -432,9 +432,9 @@ def prepare_label(global_config=None, n_jobs=1, verbose=False):
 
     # Add output target.
     # TODO: Fix arguments that should be either in the .conf or the CLI
-    args.output = "../output/a7_label.csv"
-    args.mask_labels_file = "../output/fmris_masked_labels_file.p"
-    args.labels_mat = "../output/labels_mat.csv"
+    output_path = "../output/a7_label.csv"
+    mask_labels_file = "../output/fmris_masked_labels_file.p"
+    labels_mat = "../output/labels_mat.csv"
 
     # -------------------------------
     # --- LOAD DATA & INIT FIELDS ---
@@ -669,9 +669,9 @@ def prepare_label(global_config=None, n_jobs=1, verbose=False):
                     .replace(corr["rule"]["remove"], "")
             )
 
-    fmris_kept["labels_no_heuristic"].to_csv(f"{args.output[:-4]}_no_heuristic.csv", header=True)
-    fmris_kept["labels_no_task"].to_csv(f"{args.output[:-4]}_no_task.csv", header=True)
-    fmris_kept["labels_all"].to_csv(f"{args.output[:-4]}_all.csv", header=True)
+    fmris_kept["labels_no_heuristic"].to_csv(f"{output_path[:-4]}_no_heuristic.csv", header=True)
+    fmris_kept["labels_no_task"].to_csv(f"{output_path[:-4]}_no_task.csv", header=True)
+    fmris_kept["labels_all"].to_csv(f"{output_path[:-4]}_all.csv", header=True)
 
     # Remove "irrelevant" labels
     # ('concept', 'rule'...)
@@ -752,21 +752,21 @@ def prepare_label(global_config=None, n_jobs=1, verbose=False):
     remove_duplicate_labels(fmris_kept, vocab, n_jobs=n_jobs)
 
     # Save result as CSV
-    fmris_kept["labels_no_heuristic"].to_csv(f"{args.output[:-4]}_syn_hyp.csv", header=True)
-    fmris_kept["labels_no_task"].to_csv(f"{args.output[:-4]}_no_task_syn_hyp.csv", header=True)
-    fmris_kept["labels_all"].to_csv(f"{args.output[:-4]}_all_syn_hyp.csv", header=True)
-    fmris_kept["labels_from_tags"].to_csv(f"{args.output[:-4]}_from_tags.csv", header=True)
-    fmris_kept["labels_from_contrasts"].to_csv(f"{args.output[:-4]}_from_contrasts.csv", header=True)
-    fmris_kept["labels_from_all"].to_csv(f"{args.output[:-4]}_from_all.csv", header=True)
-    fmris_kept["labels_from_tasks"].to_csv(f"{args.output[:-4]}_from_tasks.csv", header=True)
-    fmris_kept["labels_from_rules"].to_csv(f"{args.output[:-4]}_from_rules.csv", header=True)
+    fmris_kept["labels_no_heuristic"].to_csv(f"{output_path[:-4]}_syn_hyp.csv", header=True)
+    fmris_kept["labels_no_task"].to_csv(f"{output_path[:-4]}_no_task_syn_hyp.csv", header=True)
+    fmris_kept["labels_all"].to_csv(f"{output_path[:-4]}_all_syn_hyp.csv", header=True)
+    fmris_kept["labels_from_tags"].to_csv(f"{output_path[:-4]}_from_tags.csv", header=True)
+    fmris_kept["labels_from_contrasts"].to_csv(f"{output_path[:-4]}_from_contrasts.csv", header=True)
+    fmris_kept["labels_from_all"].to_csv(f"{output_path[:-4]}_from_all.csv", header=True)
+    fmris_kept["labels_from_tasks"].to_csv(f"{output_path[:-4]}_from_tasks.csv", header=True)
+    fmris_kept["labels_from_rules"].to_csv(f"{output_path[:-4]}_from_rules.csv", header=True)
 
     # Save labels mask
     mask_labels_no_heuristic = ~fmris_kept["labels_no_heuristic"].isna().values
-    with open(args.mask_labels_file[:-2] + "no_heuristic.p", 'wb') as f:
+    with open(mask_labels_file[:-2] + "no_heuristic.p", 'wb') as f:
         pickle.dump(mask_labels_no_heuristic, f)
     mask_labels = (~fmris_kept["labels_all"].isna()).values
-    with open(args.mask_labels_file, 'wb') as f:
+    with open(mask_labels_file, 'wb') as f:
         pickle.dump(mask_labels, f)
 
     # Build and save labels matrix
@@ -777,7 +777,7 @@ def prepare_label(global_config=None, n_jobs=1, verbose=False):
         vocab=vocab,
         label_col=None,
     )
-    Y_labels_no_heuristic.to_csv(f"{args.labels_mat[:-4]}no_heuristic.csv", header=True)
+    Y_labels_no_heuristic.to_csv(f"{labels_mat[:-4]}no_heuristic.csv", header=True)
     labels_present = fmris_kept[mask_labels][["labels_all"]]
     Y_labels = dumb_tagger(
         labels_present,
@@ -785,7 +785,7 @@ def prepare_label(global_config=None, n_jobs=1, verbose=False):
         vocab=vocab,
         label_col=None,
     )
-    Y_labels.to_csv(args.labels_mat, header=True)
+    Y_labels.to_csv(labels_mat, header=True)
 
     if verbose:
         print("> total number of labelled fMRIs =",
