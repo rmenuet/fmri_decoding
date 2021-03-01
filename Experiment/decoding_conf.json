@@ -44,7 +44,7 @@
   },
 
   "evaluation": {
-    "test_IDs":         [4438],
+    "test_IDs":         [6618],
     "recall@N":         10
   }
 }

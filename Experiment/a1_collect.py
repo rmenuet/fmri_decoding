@@ -181,7 +181,7 @@ def prepare_collect(global_config=None, verbose=False):
     neurovault_fmris = load_fmris(neurovault)
 
     # Removal of Neurovault's first and latest IBC version (to match Romuald's original data):
-    IBC_DUPLICATES_TO_REMOVE = [2138, 6618]
+    IBC_DUPLICATES_TO_REMOVE = [2138, 4438] # 6618
     fmris = neurovault_fmris.loc[lambda df: ~df.collection_id.isin(IBC_DUPLICATES_TO_REMOVE)]
     colls = neurovault_collections.drop(IBC_DUPLICATES_TO_REMOVE, axis=0)
 
