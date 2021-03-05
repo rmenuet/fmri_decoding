@@ -743,14 +743,56 @@ def prepare_label(global_config=None, n_jobs=1, verbose=False):
         if verbose:
             print("  > Infering encompassing labels based on manual hierarchy")
 
-        fmris_kept = encompass_labels_from_manual_hierarchy(fmris_kept, config, n_jobs)
+        for _ in range(4):
+            # Run 4 times because of hypernymy graph max depth
+            for word, hypernyms in config["hypernyms"].items():
+                fmris_kept["labels_no_heuristic"] = (
+                    fmris_kept["labels_no_heuristic"]
+                    .str
+                    .split(r"\s?,\s?")
+                    .apply(lambda x:
+                        replace_matching(x, word, word + "," + hypernyms))
+                    .str
+                    .join(",")
+                )
+                fmris_kept["labels_no_task"] = (
+                    fmris_kept["labels_no_task"]
+                    .str
+                    .split(r"\s?,\s?")
+                    .apply(lambda x:
+                        replace_matching(x, word, word + "," + hypernyms))
+                    .str
+                    .join(",")
+                )
+                fmris_kept["labels_all"] = (
+                    fmris_kept["labels_all"]
+                    .str
+                    .split(r"\s?,\s?")
+                    .apply(lambda x:
+                        replace_matching(x, word, word + "," + hypernyms))
+                    .str
+                    .join(",")
+                )
+
 
     # Verify that all concepts are in the vocabulary and deduplicate them
     if verbose:
         print("  > Removing duplicate labels (after syn/hyp completion)")
-
-    remove_duplicate_labels(fmris_kept, vocab, n_jobs=n_jobs)
-
+    fmris_kept["labels_no_heuristic"] = (
+        fmris_kept["labels_no_heuristic"]
+        .astype(str)
+        .apply(lambda x: verif_labels(x, vocab))
+    )
+    fmris_kept["labels_no_task"] = (
+        fmris_kept["labels_no_task"]
+        .astype(str)
+        .apply(lambda x: verif_labels(x, vocab))
+    )
+    fmris_kept["labels_all"] = (
+        fmris_kept["labels_all"]
+        .astype(str)
+        .apply(lambda x: verif_labels(x, vocab))
+    )
     # Save result as CSV
     fmris_kept["labels_no_heuristic"].to_csv(f"{output_path[:-4]}_syn_hyp.csv", header=True)
     fmris_kept["labels_no_task"].to_csv(f"{output_path[:-4]}_no_task_syn_hyp.csv", header=True)
