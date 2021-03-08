@@ -1,13 +1,13 @@
 {
   "nv_path":       "../Data/neurovault/",
-  "cache_path":    "~/cache/",
+  "cache_path":    "../output/",
   "mask_file":     "../Data/masks/task_mask.nii.gz",
   "dict_file":     "../Data/atlases/components_1024_task.nii.gz",
   "meta_path":     "../Data/meta/",
   "meta_file":     "fmris_meta.csv",
 
   "collect": {
-    "download": true,
+    "download_mode": "offline",
     "hcp_tags": "../Data/labels/hcp_tags.csv"
   },
 
@@ -68,7 +68,7 @@
     "scale":       false
   },
   "label": {
-    "id_test": [4438],
+    "id_test": [6618],
     "concepts_file": "../Data/labels/concepts.json",
     "apply_task_concept_map": true,
     "task_concept_map_file": "../Data/labels/cogatlas_tasks_concepts_bertrand_mini.csv",

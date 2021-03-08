@@ -110,7 +110,7 @@ def prepare_embed(global_config=None, verbose=False):
         verbose=verbose
     )
 
-    if args.verbose:
+    if verbose:
         print("> Embedding finished, saving to file...")
 
     with open(config["output_file"], 'wb') as f:

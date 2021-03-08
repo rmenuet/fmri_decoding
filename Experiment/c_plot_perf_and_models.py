@@ -16,11 +16,55 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import pickle
 import matplotlib.lines as mlines
-from meta_fmri.explore.plotting import plot_embedded
+from nilearn.plotting import plot_stat_map, plot_glass_brain
 import torch
 import nibabel as nib
 from nilearn.input_data import NiftiMasker
-from .b_decoding_experiment import PytorchEstimator
+from b_decoding_experiment import PytorchEstimator
+
+
+def plot_embedded(x,
+                  atlas_masked,
+                  masker,
+                  plot_type="glass_brain",
+                  title="",
+                  axes=None):
+    """
+    Plots the means of statistical maps embedded using an atlas.
+
+    :param x: numpy.ndarray (n_atlas_components)
+              The array of the components from an embedded statistical map.
+    :param atlas_masked:
+    :param masker:
+    :param plot_type:
+    :param title:
+    :param axes:
+    :return:
+    """
+    mask = x @ atlas_masked
+    vox = masker.inverse_transform(mask)
+    if plot_type == "glass_brain":
+        return plot_glass_brain(
+            vox,
+            display_mode='xz',
+            plot_abs=False,
+            threshold=None,
+            # colorbar=True,
+            cmap=plt.cm.bwr,
+            title=title,
+            axes=axes
+        )
+    else:
+        return plot_stat_map(
+            vox,
+            threshold=None,
+            colorbar=True,
+            cmap=plt.cm.bwr,
+            title=title,
+            axes=axes
+        )
+
+
 
 
 def wrap(text, length):
@@ -47,7 +91,7 @@ def main():
                         default="../Data/results/per_label_results.csv",
                         help="path to the CSV file with the per-label "
                              "performance")
-    parser.add_argument("-r", "--results_file",
+    parser.add_argument("-r1", "--result_file",
                         default="../Data/results/perf.PNG",
                         help="Path to the file where results are saved")
     parser.add_argument("-f", "--features",
@@ -71,15 +115,15 @@ def main():
                         default="../Data/models/clf.pt",
                         help="Path of the pytorch dump of a decoding model "
                              "trained provided on the maps and labels")
-    parser.add_argument("-e", "--encodings",
-                        default="../Data/models/encodings.p",
-                        help="Path of the pickle dump of the dictionary "
-                             "of encoding maps")
+    # parser.add_argument("-e", "--encodings",
+    #                     default="../Data/models/encodings.p",
+    #                     help="Path of the pickle dump of the dictionary "
+    #                          "of encoding maps")
     parser.add_argument("-c", "--concepts",
                         default="../Data/concepts.csv",
                         help="Path of the CSV file of comma separated concepts"
                              ", ordered as the columns of the labels file")
-    parser.add_argument("-r", "--results_file",
+    parser.add_argument("-r2", "--results_file",
                         default="../Data/results/maps.PNG",
                         help="Path to the file where results are saved")
 
@@ -176,14 +220,14 @@ def main():
     # --------------------
     vocab = list(pd.read_csv(args.concepts, index_col=0).values.flat)
 
-    mask = nib.load(args.maskl)
+    mask = nib.load(args.mask)
     masker = NiftiMasker(mask_img=mask).fit()
 
     atlas = nib.load(args.atlas)
     atlas_masked = masker.transform(atlas)
 
-    with open(args.encodings, 'rb') as f:
-        encodings_dict = pickle.load(f)
+    # with open(args.encodings, 'rb') as f:
+    #     encodings_dict = pickle.load(f)
 
     with open(args.features, 'rb') as f:
         X = pickle.load(f)
@@ -260,13 +304,13 @@ def main():
         ])
         enc_axes[i].set_xticks([])
         enc_axes[i].set_yticks([])
-        pl_enc = plot_embedded(
-            encodings_dict[concept].flatten(),
-            atlas_masked, masker,
-            plot_type="glass_brain", axes=enc_axes[i]
-        )
-        pl_enc.title("Enc.", color='k', bgcolor='w', alpha=0, size=16,
-                     weight='bold')
+        # pl_enc = plot_embedded(
+        #     encodings_dict[concept].flatten(),
+        #     atlas_masked, masker,
+        #     plot_type="glass_brain", axes=enc_axes[i]
+        # )
+        # pl_enc.title("Enc.", color='k', bgcolor='w', alpha=0, size=16,
+        #              weight='bold')
 
         dec_axes[i] = fig.add_axes([
             min_x + 0.03 * width * scale_box,

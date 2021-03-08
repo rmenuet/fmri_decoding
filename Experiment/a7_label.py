@@ -12,9 +12,13 @@
 import argparse
 import json
 import pickle
+import re
+from functools import partial
+
 import numpy as np
 import pandas as pd
-import re
+import tqdm
+from joblib import Parallel, delayed
 
 
 def intersection(lst1, lst2):
@@ -90,7 +94,7 @@ def lookup(pattern, df,
               df_explored.columns)
 
     # does the lookup
-    mask = np.column_stack([df_explored[col].str.contains(pattern,
+    mask = np.column_stack([df_explored[col].astype(str).str.contains(pattern,
                                                           case=case,
                                                           regex=regex,
                                                           na=False)
@@ -224,6 +228,16 @@ def vocab_tagger(vocab, df,
     return df_labelled
 
 
+def parallel_vocab_tagger(n_jobs, vocab, df, **kwargs):
+    """Parallel version of the `vocab_tagger` function."""
+    df_splits = np.array_split(df, n_jobs * 3)
+
+    vocab_tagger_function = partial(vocab_tagger, vocab=vocab, **kwargs)
+    df_splits_processed = Parallel(n_jobs)(delayed(vocab_tagger_function)(df=df) for df in df_splits)
+
+    return pd.concat(df_splits_processed, axis=0)
+
+
 def verif_labels(labels, vocab):
     """
     :param labels: string of comma separated labels
@@ -332,7 +346,83 @@ def dumb_tagger(df,
     return df_res
 
 
-def prepare_label(global_config=None, verbose=False):
+def remove_contrast_term_from_column(df, target_column, contrast_regex):
+    """Search potential negative contrast term based on contrast regex and remove it"""
+    return df.assign(**{
+        target_column: lambda df: (
+            df[target_column]
+            .astype(str)
+            .str.lower()
+            .str.split(contrast_regex)
+            .apply(lambda x: ("" if type(x) is not list else x[0]))
+        )
+    })
+
+
+def remove_duplicate_labels(fmris, vocab, n_jobs):
+    def _remove_duplicates(fmris, vocab):
+        verif_labels_for_vocab = partial(verif_labels, vocab=vocab)
+
+        return fmris.assign(
+            labels_no_heuristic=lambda df: df.labels_no_heuristic.astype(str).apply(verif_labels_for_vocab),
+            labels_no_task=lambda df: df.labels_no_task.astype(str).apply(verif_labels_for_vocab),
+            labels_all=lambda df: df.labels_all.astype(str).apply(verif_labels_for_vocab),
+        )
+
+    df_splits = np.array_split(fmris, n_jobs * 3)
+
+    df_splits_processed = Parallel(n_jobs)(
+        delayed(partial(_remove_duplicates, vocab=vocab))(fmris=df) for df in df_splits
+    )
+
+    return pd.concat(df_splits_processed, axis=0)
+
+
+def encompass_labels_from_manual_hierarchy(fmris, config, n_jobs):
+    def _encompass_labels(fmris, config):
+        for _ in range(4):
+            # Run 4 times because of hypernymy graph max depth
+            for word, hypernyms in config["hypernyms"].items():
+                fmris["labels_no_heuristic"] = (
+                    fmris["labels_no_heuristic"]
+                        .str
+                        .split(r"\s?,\s?")
+                        .apply(lambda x:
+                               replace_matching(x, word, word + "," + hypernyms))
+                        .str
+                        .join(",")
+                )
+                fmris["labels_no_task"] = (
+                    fmris["labels_no_task"]
+                        .str
+                        .split(r"\s?,\s?")
+                        .apply(lambda x:
+                               replace_matching(x, word, word + "," + hypernyms))
+                        .str
+                        .join(",")
+                )
+                fmris["labels_all"] = (
+                    fmris["labels_all"]
+                        .str
+                        .split(r"\s?,\s?")
+                        .apply(lambda x:
+                               replace_matching(x, word, word + "," + hypernyms))
+                        .str
+                        .join(",")
+                )
+
+        return fmris
+
+    df_splits = np.array_split(fmris, n_jobs * 3)
+
+    df_splits_processed = Parallel(n_jobs)(
+        delayed(partial(_encompass_labels, config=config))(fmris=df) for df in df_splits
+    )
+
+    return pd.concat(df_splits_processed, axis=0)
+
+
+def prepare_label(global_config=None, n_jobs=1, verbose=False):
     # --------------
     # --- CONFIG ---
     # --------------
@@ -340,29 +430,40 @@ def prepare_label(global_config=None, verbose=False):
     meta_path       = global_config["meta_path"]
     fmris_meta_file = meta_path + global_config["meta_file"]
 
+    # Add output target.
+    # TODO: Fix arguments that should be either in the .conf or the CLI
+    output_path = "../output/a7_label.csv"
+    mask_labels_file = "../output/fmris_masked_labels_file.p"
+    labels_mat = "../output/labels_mat.csv"
+
     # -------------------------------
     # --- LOAD DATA & INIT FIELDS ---
     # -------------------------------
     # get fMRIs metadata from where to extract labels
-    fmris = pd.read_csv(fmris_meta_file, low_memory=False, index_col=0)
-    fmris_kept = fmris.loc[fmris["kept"]]
+    fmris_kept = (
+        pd.read_csv(fmris_meta_file, low_memory=False, index_col=0)
+        .loc[lambda df: df.kept]
+    )
 
-    print("> total number of fMRIs to be labelled =",
-          len(fmris_kept))
+    print("> total number of fMRIs to be labelled =", len(fmris_kept))
 
     # Initialize various label fields that will then be filled
-    fmris_kept["labels_from_tags"] = ""
-    fmris_kept["labels_from_contrasts"] = ""
-    fmris_kept["labels_from_all"] = ""
-    fmris_kept["labels_from_tasks"] = ""
-    fmris_kept["labels_from_rules"] = ""
-
-    fmris_train = (fmris_kept.loc[~fmris_kept["collection_id"]
-                   .isin(config["id_test"])]
-                   .copy())
-    fmris_test = (fmris_kept.loc[fmris_kept["collection_id"]
-                  .isin(config["id_test"])]
-                  .copy())
+    fmris_kept = fmris_kept.assign(
+        labels_from_tags="",
+        labels_from_contrasts="",
+        labels_from_all="",
+        labels_from_tasks="",
+        labels_from_rules="",
+    )
+    fmris_train = (
+        fmris_kept.loc[~fmris_kept["collection_id"].isin(config["id_test"])]
+       .copy()
+    )
+    fmris_test = (
+        fmris_kept.loc[fmris_kept["collection_id"].isin(config["id_test"])]
+        .copy()
+        .assign(tags=lambda df: df.tags.str.replace("_", " "))
+    )
 
     # -------------------------------
     # --- EXTRACT ORIGINAL LABELS ---
@@ -377,54 +478,32 @@ def prepare_label(global_config=None, verbose=False):
     if verbose:
         print("  > Removing negative parts in contrasts, names and file names")
 
-    fmris_train["contrast_definition"] = \
-        fmris_train["contrast_definition"].str.lower()
-    fmris_train["contrast_definition"] = (
-        fmris_train["contrast_definition"]
-        .astype(str)
-        .str
-        .split(r">|\s-\s|vs|versus|minus|[\s_-]non?[\s_-]|neg[\s_-]")
-        .apply(
-            lambda x:
-                "" if type(x) is not list
-                else x[0]
-        )
+    fmris_train = remove_contrast_term_from_column(
+        fmris_train,
+        target_column="contrast_definition",
+        contrast_regex=r">|\s-\s|vs|versus|minus|[\s_-]non?[\s_-]|neg[\s_-]",
     )
 
-    fmris_train["name"] = fmris_train["name"].str.lower()
-    fmris_train["name"] = (
-        fmris_train["name"]
-        .astype(str)
-        .str
-        .split(r">|\s-\s|vs|versus|minus|[ _-]non?[\s_-]|[ _-]neg[\s_-]")
-        .apply(
-            lambda x:
-                "" if type(x) is not list
-                else x[0]
-        )
+    fmris_train = remove_contrast_term_from_column(
+        fmris_train,
+        target_column="name",
+        contrast_regex=r">|\s-\s|vs|versus|minus|[ _-]non?[\s_-]|[ _-]neg[\s_-]",
     )
 
-    fmris_train["file"] = fmris_train["file"].str.lower()
-    fmris_train["file"] = (
-        fmris_train["file"]
-        .astype(str)
-        .str
-        .split(r"vs_|versus_|minus_|[ _-]neg_|[ _-]non?_")
-        .apply(
-            lambda x:
-                "" if type(x) is not list
-                else x[0]
-        )
+    fmris_train = remove_contrast_term_from_column(
+        fmris_train,
+        target_column="file",
+        contrast_regex=r"vs_|versus_|minus_|[ _-]neg_|[ _-]non?_",
     )
 
     # Get any phrase matching a CognitiveAtlas concepts in fMRI tags
     if verbose:
         print("  > adding labels from tags")
 
-    fmris_train = vocab_tagger(vocab, fmris_train,
+    fmris_train = parallel_vocab_tagger(n_jobs, vocab, fmris_train,
                                label_col="labels_from_tags",
                                col_white_list=["tags", ])
-    fmris_test = vocab_tagger(vocab, fmris_test,
+    fmris_test = parallel_vocab_tagger(n_jobs, vocab, fmris_test,
                               label_col="labels_from_tags",
                               col_white_list=["tags", ])
 
@@ -432,7 +511,8 @@ def prepare_label(global_config=None, verbose=False):
     if verbose:
         print("  > labelling from contrasts")
 
-    fmris_train = vocab_tagger(
+    fmris_train = parallel_vocab_tagger(
+        n_jobs,
         vocab,
         fmris_train,
         label_col="labels_from_contrasts",
@@ -446,7 +526,8 @@ def prepare_label(global_config=None, verbose=False):
         print("  > adding labels from regexp in all fields "
               "(except contrasts and tags)")
 
-    fmris_train = vocab_tagger(
+    fmris_train = parallel_vocab_tagger(
+        n_jobs,
         vocab,
         fmris_train,
         label_col="labels_from_all",
@@ -472,21 +553,25 @@ def prepare_label(global_config=None, verbose=False):
                          .contains(str(rule["filter"]["pattern"]),
                                    case=False)).values
 
+            not_found_column_flag = False
             if rule["rule"]["field"] == "ALL":
                 label_mask = lookup(str(rule["rule"]["pattern"]),
                                     fmris_train,
                                     case=False)
             else:
-                label_mask = (fmris_train[str(rule["rule"]["field"])]
-                              .astype(str)
-                              .str
-                              .contains(str(rule["rule"]["pattern"]),
-                                        case=False)).values
-
+                if str(rule["rule"]["field"]) in fmris_train.columns:
+                    label_mask = (fmris_train[str(rule["rule"]["field"])]
+                                  .astype(str)
+                                  .str
+                                  .contains(str(rule["rule"]["pattern"]),
+                                            case=False)).values
+                else:
+                    not_found_column_flag = True
+                    label_mask = np.array([False] * len(fmris_train)).astype(bool)
             if verbose:
-                print("    |-> matched",
+                print("    |-> matched ",
                       (rule_mask & label_mask).sum(),
-                      "times")
+                      "times with flag ", not_found_column_flag)
 
             fmris_train.loc[rule_mask & label_mask, "labels_from_rules"] = (
                     fmris_train.loc[rule_mask & label_mask,
@@ -545,21 +630,8 @@ def prepare_label(global_config=None, verbose=False):
     # Verify that all concepts are in the vocabulary and deduplicate them
     if verbose:
         print("  > Removing duplicate labels (before syn/hyp completion)")
-    fmris_kept["labels_no_heuristic"] = (
-        fmris_kept["labels_no_heuristic"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
-    fmris_kept["labels_no_task"] = (
-        fmris_kept["labels_no_task"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
-    fmris_kept["labels_all"] = (
-        fmris_kept["labels_all"]
-        .astype(str)
-        .apply(lambda x: verif_labels(x, vocab))
-    )
+
+    fmris_kept = remove_duplicate_labels(fmris_kept, vocab, n_jobs=n_jobs)
 
     if config["apply_corrections"]:
         if verbose:
@@ -597,15 +669,9 @@ def prepare_label(global_config=None, verbose=False):
                     .replace(corr["rule"]["remove"], "")
             )
 
-    fmris_kept["labels_no_heuristic"].to_csv(args.output[:-4]
-                                             + "_no_heuristic.csv",
-                                             header=True)
-    fmris_kept["labels_no_task"].to_csv(args.output[:-4]
-                                        + "_no_task.csv",
-                                        header=True)
-    fmris_kept["labels_all"].to_csv(args.output[:-4]
-                                    + "_all.csv",
-                                    header=True)
+    fmris_kept["labels_no_heuristic"].to_csv(f"{output_path[:-4]}_no_heuristic.csv", header=True)
+    fmris_kept["labels_no_task"].to_csv(f"{output_path[:-4]}_no_task.csv", header=True)
+    fmris_kept["labels_all"].to_csv(f"{output_path[:-4]}_all.csv", header=True)
 
     # Remove "irrelevant" labels
     # ('concept', 'rule'...)
@@ -708,6 +774,7 @@ def prepare_label(global_config=None, verbose=False):
                     .join(",")
                 )
 
+
     # Verify that all concepts are in the vocabulary and deduplicate them
     if verbose:
         print("  > Removing duplicate labels (after syn/hyp completion)")
@@ -726,59 +793,41 @@ def prepare_label(global_config=None, verbose=False):
         .astype(str)
         .apply(lambda x: verif_labels(x, vocab))
     )
-
     # Save result as CSV
-    fmris_kept["labels_no_heuristic"].to_csv(args.output[:-4]
-                                             + "_syn_hyp.csv",
-                                             header=True)
-    fmris_kept["labels_no_task"].to_csv(args.output[:-4]
-                                        + "_no_task_syn_hyp.csv",
-                                        header=True)
-    fmris_kept["labels_all"].to_csv(args.output[:-4]
-                                    + "_all_syn_hyp.csv",
-                                    header=True)
-    fmris_kept["labels_from_tags"].to_csv(args.output[:-4]
-                                          + "_from_tags.csv",
-                                          header=True)
-    fmris_kept["labels_from_contrasts"].to_csv(args.output[:-4]
-                                               + "_from_contrasts.csv",
-                                               header=True)
-    fmris_kept["labels_from_all"].to_csv(args.output[:-4]
-                                         + "_from_all.csv",
-                                         header=True)
-    fmris_kept["labels_from_tasks"].to_csv(args.output[:-4]
-                                           + "_from_tasks.csv",
-                                           header=True)
-    fmris_kept["labels_from_rules"].to_csv(args.output[:-4]
-                                           + "_from_rules.csv",
-                                           header=True)
+    fmris_kept["labels_no_heuristic"].to_csv(f"{output_path[:-4]}_syn_hyp.csv", header=True)
+    fmris_kept["labels_no_task"].to_csv(f"{output_path[:-4]}_no_task_syn_hyp.csv", header=True)
+    fmris_kept["labels_all"].to_csv(f"{output_path[:-4]}_all_syn_hyp.csv", header=True)
+    fmris_kept["labels_from_tags"].to_csv(f"{output_path[:-4]}_from_tags.csv", header=True)
+    fmris_kept["labels_from_contrasts"].to_csv(f"{output_path[:-4]}_from_contrasts.csv", header=True)
+    fmris_kept["labels_from_all"].to_csv(f"{output_path[:-4]}_from_all.csv", header=True)
+    fmris_kept["labels_from_tasks"].to_csv(f"{output_path[:-4]}_from_tasks.csv", header=True)
+    fmris_kept["labels_from_rules"].to_csv(f"{output_path[:-4]}_from_rules.csv", header=True)
 
     # Save labels mask
-    mask_labels_no_heuristic = \
-        ~fmris_kept["labels_no_heuristic"].isna().values
-    with open(args.mask_labels_file[:-2] + "no_heuristic.p", 'wb') as f:
+    mask_labels_no_heuristic = ~fmris_kept["labels_no_heuristic"].isna().values
+    with open(mask_labels_file[:-2] + "no_heuristic.p", 'wb') as f:
         pickle.dump(mask_labels_no_heuristic, f)
     mask_labels = (~fmris_kept["labels_all"].isna()).values
-    with open(args.mask_labels_file, 'wb') as f:
+    with open(mask_labels_file, 'wb') as f:
         pickle.dump(mask_labels, f)
 
     # Build and save labels matrix
-    labels_present_no_heuristic = \
-        fmris_kept[mask_labels_no_heuristic][["labels_no_heuristic"]]
-    Y_labels_no_heuristic = \
-        dumb_tagger(labels_present_no_heuristic,
-                    split_regex=r"\s?,\s?",
-                    vocab=vocab,
-                    label_col=None)
-    Y_labels_no_heuristic.to_csv(args.labels_mat[:-4]
-                                 + "no_heuristic.csv",
-                                 header=True)
+    labels_present_no_heuristic = fmris_kept[mask_labels_no_heuristic][["labels_no_heuristic"]]
+    Y_labels_no_heuristic = dumb_tagger(
+        labels_present_no_heuristic,
+        split_regex=r"\s?,\s?",
+        vocab=vocab,
+        label_col=None,
+    )
+    Y_labels_no_heuristic.to_csv(f"{labels_mat[:-4]}no_heuristic.csv", header=True)
     labels_present = fmris_kept[mask_labels][["labels_all"]]
-    Y_labels = dumb_tagger(labels_present,
-                           split_regex=r"\s?,\s?",
-                           vocab=vocab,
-                           label_col=None)
-    Y_labels.to_csv(args.labels_mat, header=True)
+    Y_labels = dumb_tagger(
+        labels_present,
+        split_regex=r"\s?,\s?",
+        vocab=vocab,
+        label_col=None,
+    )
+    Y_labels.to_csv(labels_mat, header=True)
 
     if verbose:
         print("> total number of labelled fMRIs =",
@@ -794,6 +843,10 @@ if __name__ == "__main__":
     parser.add_argument("-C", "--config",
                         default="./config.json",
                         help="Path of the JSON config file")
+    parser.add_argument("-j", "--jobs",
+                        type=int,
+                        default=1,
+                        help="Number of jobs")
     parser.add_argument("-v", "--verbose",
                         action="store_true",
                         help="Activates (many) debugging outputs")
@@ -803,4 +856,4 @@ if __name__ == "__main__":
     with open(args.config) as f:
         global_config = json.load(f)
 
-    prepare_label(global_config, args.verbose)
+    prepare_label(global_config, args.jobs, args.verbose)
