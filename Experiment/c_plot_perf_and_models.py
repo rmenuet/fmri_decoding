@@ -9,17 +9,20 @@
 # ===================================================================
 
 import argparse
+import json
+import pickle
+
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import matplotlib.lines as mlines
+import nibabel as nib
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import pickle
-import matplotlib.lines as mlines
-from nilearn.plotting import plot_stat_map, plot_glass_brain
 import torch
-import nibabel as nib
+from nilearn.plotting import plot_stat_map, plot_glass_brain
 from nilearn.input_data import NiftiMasker
+
 from b_decoding_experiment import PytorchEstimator
 
 
@@ -129,13 +132,25 @@ def main():
 
     args = parser.parse_args()
 
+    # Load Cognitive Atlas categories
+    with open("Data/labels/cogatlas_concepts_categories_mapping.json", "r") as file:
+        concept_to_category = json.load(file)
+
     # --------------------
     # --- DATA LOADING ---
     # --------------------
     results_model = pd.read_csv(args.perf_file, index_col=0)
-    results_model.sort_values("AUC TEST", ascending=False, inplace=True)
+    results_model = (
+        results_model
+        .assign(category=lambda df: df.index.map(concept_to_category).fillna("Unknown"))
+        .sort_values(["category", "AUC TEST"], ascending=[True, False])
+    )
     results_model.index.name = "Concept"
 
+    categories_lengths = dict(
+        results_model.category.value_counts()
+    )
+    total_number_of_concepts = results_model.category.count()
     # ------------------------
     # --- PLOT PERFORMANCE ---
     # ------------------------
@@ -143,6 +158,19 @@ def main():
     sns.set_context("notebook", font_scale=1.1)
     font = {'fontname': 'DejaVu Sans Mono'}
     ylabels = list(results_model.index)
+    colors_mapping = {
+        "Action": [rgb / 255. for rgb in [238, 181, 235]],
+        "Attention": [rgb / 255. for rgb in [194, 109, 188]],
+        "Emotion": [rgb / 255. for rgb in [200, 244, 249]],
+        'Executive/Cognitive Control': [rgb / 255. for rgb in [60, 172, 174]],
+        'Language': [rgb / 255. for rgb in [250, 190, 192]],
+        'Learning and Memory': [rgb / 255. for rgb in [248, 92, 112]],
+        'Perception': [rgb / 255. for rgb in [243, 121, 112]],
+        'Reasoning and Decision Making': [rgb / 255. for rgb in [228, 61, 64]],
+        'Social Function': "brown",
+        'Unknown': "olive",
+    }
+    colors = list(results_model.category.map(colors_mapping))
 
     ylabels_padded = [" " * 39 + wrap(lab, 37)
                       for lab in ylabels]
@@ -176,7 +204,40 @@ def main():
                  results_model["ratio TRAIN"].values,
                  height_nnod + 2 * height_other,
                  linewidth=0,
-                 color='darkorange')
+                 color=colors)
+
+    y_min, y_max = ax_twin.get_ylim()
+    y_span = y_max - y_min
+    x_max, x_min = ax_twin.get_xlim()
+    # current_y_offset = y_max
+    current_y_offset = 1.  # - 0.5 / (total_number_of_concepts + 1)
+
+    linewidth = 15
+    horizontal_offset = 0.05
+    vertical_offset = 0.75
+    for index, category in enumerate(sorted(categories_lengths.keys())):
+        y_top = current_y_offset - 0.5 / (total_number_of_concepts + 1)
+        y_bottom = y_top - categories_lengths[category] / (total_number_of_concepts + 1)
+        ax_twin.axvline(
+            x_max - horizontal_offset,
+            y_top - vertical_offset / (total_number_of_concepts + 1),
+            y_bottom + vertical_offset / (total_number_of_concepts + 1),
+            color=colors_mapping[category],
+            linewidth=linewidth,
+        )
+        ax_twin.text(
+            x_min - horizontal_offset,
+            (y_bottom + y_top) / 2,
+            (category.replace(" ", "\n").replace("/", "\n") if categories_lengths[category] < 8 else category),
+            ha="center",
+            # va="center",
+            rotation="vertical",
+            fontsize=8,
+            transform=ax_twin.transAxes,
+        )
+        current_y_offset = y_bottom + 0.5 / (total_number_of_concepts + 1)
+        # break
+
     ax_twin.set_yticks(ind)
     ax_twin.set_yticklabels(ylabels_padded,
                             horizontalalignment='center',
