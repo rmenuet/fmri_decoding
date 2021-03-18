@@ -133,7 +133,7 @@ def main():
     args = parser.parse_args()
 
     # Load Cognitive Atlas categories
-    with open("Data/labels/cogatlas_concepts_categories_mapping.json", "r") as file:
+    with open("../Data/labels/cogatlas_concepts_categories_mapping.json", "r") as file:
         concept_to_category = json.load(file)
 
     # --------------------
