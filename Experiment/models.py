@@ -68,16 +68,22 @@ class ModelLogReg1NonLin(torch.nn.Module):
 class ModelLogReg1NonLinBN(torch.nn.Module):
 
     def __init__(self,
-                 n_feature, n_label, latent_dim=100):
+                 n_feature, n_label, latent_dim=100,
+                 input_dropout=0.0, hidden_dropout=0.0):
         super().__init__()
+
+        self.input_dropout = torch.nn.Dropout(p=input_dropout)
+        self.hidden_dropout = torch.nn.Dropout(p=hidden_dropout)
         self.relu = torch.nn.ReLU()
         self.linear1 = torch.nn.Linear(n_feature, latent_dim)
         self.bn1 = torch.nn.BatchNorm1d(latent_dim)
         self.linear2 = torch.nn.Linear(latent_dim, n_label)
 
     def forward(self, x):
+        x = self.input_dropout(x)
         x = self.linear1(x)
         x = self.bn1(x)
+        x = self.hidden_dropout(x)
         x = self.relu(x)
         x = self.linear2(x)
         return x
