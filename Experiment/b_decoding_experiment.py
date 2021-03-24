@@ -18,6 +18,8 @@ import json
 import os
 import pickle
 import shutil
+from functools import partial
+from loguru import logger
 
 # data management
 import matplotlib.pyplot as plt
@@ -618,8 +620,7 @@ def decoding_experiment(configuration="spec_template.json",
     #   (filename without JSON extension)
     ID = configuration[:-5].split("/")[-1]
 
-    if verbose:
-        print("=== Decoding experiment", ID, "===")
+    logger.info(f"=== Decoding experiment {ID} ===")
 
     with open(configuration, encoding='utf-8') as f:
         config = json.load(f)
@@ -630,19 +631,19 @@ def decoding_experiment(configuration="spec_template.json",
 
     # Control whether the experiment was already run
     # and results mught be overwritten
-    if (
-            (not force)
-            &
-            ((not mkdir(path)) & (mode == "train"))
-    ):
+    should_ask_question_for_experiment = (
+        (not force)
+        &
+        ((not mkdir(path)) & (mode == "train"))
+    )
+    if should_ask_question_for_experiment:
         if not yes_or_no("\nExperiment already run, "
                          "ARE YOU SURE you want to retrain model? "):
             print("Execution aborted")
             return 0
 
     # Copy original configuration to backup folder
-    shutil.copy(configuration,
-                path + configuration.split("/")[-1])
+    shutil.copy(configuration, path + configuration.split("/")[-1])
 
     # If GPU is used, limit CUDA visibility to this device
     if used_gpu >= 0:
@@ -686,9 +687,7 @@ def decoding_experiment(configuration="spec_template.json",
     param_grid = config["grid_params"]
     exploratory_comp = gridsearch_complexity(param_grid)
 
-    if verbose:
-        print("\n>> Preparation")
-        print("  > Gridsearch size:", exploratory_comp)
+    logger.info(f"Gridsearch size: {exploratory_comp}")
 
     # Initial values for model instanciation
     param_ini = {k: v[0] for (k, v) in param_grid.items()}
@@ -697,29 +696,26 @@ def decoding_experiment(configuration="spec_template.json",
     # --- DATA LOADING ---
     # --------------------
     # Metadata loading
-    meta = pd.read_csv(config["data"].get("meta_file"),
-                       low_memory=False,
-                       index_col=0)
-    meta = meta[meta["kept"]]
+    meta = (
+        pd.read_csv(config["data"].get("meta_file"), low_memory=False, index_col=0)
+        .loc[lambda df: df.kept]
+    )
 
     # Labels vocabulary loading
     with open(config["data"]["concepts_file"], encoding='utf-8') as f:
         concept_names = [line.rstrip('\n') for line in f]
-        concept_names = [concept_name.strip().lower()
-                         for concept_name in concept_names]
-        concept_names.sort()
+        concept_names = sorted([concept_name.strip().lower()
+                         for concept_name in concept_names])
 
     # Features loading
     with open(config["data"].get("features_file"), 'rb') as f:
         X = pickle.load(f)
 
     # Samples' labels loading
-    labels = pd.read_csv(config["data"]["labels_file"],
-                         low_memory=False, index_col=0)
+    labels = pd.read_csv(config["data"]["labels_file"], low_memory=False, index_col=0)
 
-    if verbose:
-        print("  > Data loaded")
-        print("    > Number of kept fMRIs in dataset", len(meta))
+    logger.info("Data loaded")
+    logger.info(f"Number of kept fMRIs in dataset {len(meta)}")
 
     # Only keep samples (fMRIs metadata and their embeddings) with labels
     mask_labelled = ~labels.iloc[:, 0].isna()
@@ -733,9 +729,7 @@ def decoding_experiment(configuration="spec_template.json",
 
     # Extract vocabulary of labels present in the dataset
     vocab_orig = np.array(Y.columns)
-    if verbose:
-        print("    > Number of labels in the whole dataset (TRAIN+TEST):",
-              len(vocab_orig))
+    logger.info(f"Number of labels in the whole dataset (TRAIN+TEST): {len(vocab_orig)}")
 
     # Convert Y to np.array of int
     Y = Y.values * 1
@@ -756,9 +750,9 @@ def decoding_experiment(configuration="spec_template.json",
                 ~meta[blacklist_key].isin(blacklist[blacklist_key])
             )
         meta, X, Y = mask_rows(mask_not_blacklisted, meta, X, Y)
-    if verbose:
-        print("    > Number of fMRIs with labels:", len(meta))
-        print("    > Number of labels in Train:", len(vocab_orig))
+
+    logger.info(f"Number of fMRIs with labels: {len(meta)}")
+    logger.info(f"Number of labels in Train: {len(vocab_orig)}")
 
     # Filtering labels with too few instances in train
     # TODO: cleaner
@@ -766,10 +760,9 @@ def decoding_experiment(configuration="spec_template.json",
                  .isin(config["evaluation"]["test_IDs"]))
     colmask_lab_in_train = (Y[~mask_test].sum(axis=0)
                             >= config["labels"]["min_train"])
-    if verbose:
-        print("      > Removed",
-              len(vocab_orig) - int(colmask_lab_in_train.sum()),
-              "labels that were too rare")
+
+    number_of_rare_labels = len(vocab_orig) - int(colmask_lab_in_train.sum())
+    logger.info(f"Removed {number_of_rare_labels} labels that were too rare")
 
     # updating X and Y
     Y = Y[:, colmask_lab_in_train]
@@ -784,24 +777,22 @@ def decoding_experiment(configuration="spec_template.json",
                                                   vocab_current,
                                                   0.95,
                                                   True)
-    if verbose:
-        print("      > Removed",
-              Y.shape[1] - len(labels_low_corr_indices),
-              "labels that were too correlated")
+
+    number_of_too_correlated_labels = Y.shape[1] - len(labels_low_corr_indices)
+    logger.info(f"Removed {number_of_too_correlated_labels} labels that were too correlated")
+
     Y = Y[:, labels_low_corr_indices]
     vocab_current = vocab_current[labels_low_corr_indices]
 
     # Update of data and testset mask after highly correlated labels removal
     mask_has_low_corr_lab = (np.sum(Y, axis=1) != 0)
     meta, X, Y = mask_rows(mask_has_low_corr_lab, meta, X, Y)
-    mask_test = (meta["collection_id"]
-                 .isin(config["evaluation"]["test_IDs"]))
+    mask_test = meta["collection_id"].isin(config["evaluation"]["test_IDs"])
     
     # save original version of labels to predict before labels inference
     Y_orig = Y.copy()
     
-    if verbose:
-        print("    > Number of kept labels:", Y.shape[1])
+    logger.info(f"Number of kept labels: {Y.shape[1]}")
 
     # Concept values transformations
     if (config["labels"].get("transformation") == "none"
@@ -834,14 +825,9 @@ def decoding_experiment(configuration="spec_template.json",
         X_train = scaler.transform(X_train)
         X_test = scaler.transform(X_test)
     elif config["data"].get("scaling") == "samples":
-        X_train = preprocessing.scale(X_train,
-                                      with_mean=True,
-                                      with_std=True,
-                                      axis=1)
-        X_test = preprocessing.scale(X_test,
-                                     with_mean=True,
-                                     with_std=True,
-                                     axis=1)
+        preprocessing_on_samples = partial(preprocessing.scale, with_mean=True, with_std=True, axis=1)
+        X_train = preprocessing_on_samples(X_train)
+        X_test = preprocessing_on_samples(X_test)
     elif config["data"].get("scaling") == "max":
         X_train_max = X_train.max()
         X_train = X_train / X_train_max
@@ -873,40 +859,25 @@ def decoding_experiment(configuration="spec_template.json",
         sample_weights_train = sample_weights[~mask_test]
         X_train = np.hstack((sample_weights_train, X_train))
 
-    if verbose:
-        print("  > Data preprocessed")
-        print("    > Samples kept in TRAIN", len(X_train))
-        print("    > Samples kept in TEST", len(X_test))
-        if weighted_samples:
-            print("  > Min/Max sampling weight in TRAIN:",
-                  sample_weights_train.min(),
-                  "/",
-                  sample_weights_train.max())
+    logger.info("Data preprocessed")
+    logger.info(f"Samples kept in TRAIN: {len(X_train)}")
+    logger.info(f"Samples kept in TEST: {len(X_test)}")
+    if weighted_samples:
+        logger.info(f"Min/Max sampling weight in TRAIN: {sample_weights_train.min()} / {sample_weights_train.max()}")
 
     # -------------------
     # --- SAVING DATA ---
     # -------------------
-    with open(path + "X_train.p", 'wb') as f:
-        pickle.dump(X_train, f)
-    with open(path + "Y_train.p", 'wb') as f:
-        pickle.dump(Y_train, f)
-    with open(path + "Y_train_orig.p", 'wb') as f:
-        pickle.dump(Y_train_orig, f)
-    with open(path + "X_test.p", 'wb') as f:
-        pickle.dump(X_test, f)
-    with open(path + "Y_test.p", 'wb') as f:
-        pickle.dump(Y_test, f)
-    with open(path + "Y_test_orig.p", 'wb') as f:
-        pickle.dump(Y_test_orig, f)
-    with open(path + "indices_train.p", 'wb') as f:
-        pickle.dump(indices_train, f)
-    with open(path + "indices_test.p", 'wb') as f:
-        pickle.dump(indices_test, f)
-    pd.DataFrame(vocab_orig).to_csv(path + "vocab_orig.csv")
-    pd.DataFrame(vocab_current).to_csv(path + "vocab.csv")
+    for variable_name in ["X_train", "Y_train", "Y_train_orig", "X_test", "Y_test", "Y_test_orig", "indices_train", "indices_test"]:
+        output_path_for_variable = f"{path}{variable_name}.p"
+        with open(output_path_for_variable, "wb") as f:
+            # eval(name) retrieves the variable value which has this name
+            pickle.dump(eval(variable_name), f)
 
-    if verbose:
-        print("  > Preprocessed data saved")
+    pd.DataFrame(vocab_orig).to_csv(f"{path}vocab_orig.csv")
+    pd.DataFrame(vocab_current).to_csv(f"{path}vocab.csv")
+
+    logger.info("Preprocessed data saved")
 
     # ---------------------------
     # --- MODEL INSTANCIATION ---
@@ -931,18 +902,15 @@ def decoding_experiment(configuration="spec_template.json",
     # ----------------
     # --- TRAINING ---
     # ----------------
-    print("=" * 60)
-    print(">> Launch training")
+    logger.info("Launch training")
 
     clf, clf_grid = None, None
     if exploratory_comp == 1:
-        if verbose:
-            print("  > Single model training...")
+        logger.info("Single model training...")
         if estimator_type == "sklearn":
             clfs = {}
             for i, concept in enumerate(vocab_current):
-                if verbose:
-                    print("    > Training for", concept)
+                logger.info(f"Training for {concept}")
                 clf = clf_template(**param_ini)
                 clf.fit(X_train, Y_train[:, i])
                 clfs[concept] = clf
@@ -994,8 +962,7 @@ def decoding_experiment(configuration="spec_template.json",
                      weighted_samples=weighted_samples)
 
         # Grid search detailed results backup
-        pd.DataFrame(clf_grid.cv_results_).to_csv(path
-                                                  + "per_param_results.csv")
+        pd.DataFrame(clf_grid.cv_results_).to_csv(f"{path}per_param_results.csv")
 
         clf = clf_grid.best_estimator_
 
@@ -1043,44 +1010,27 @@ def decoding_experiment(configuration="spec_template.json",
         Y_test_pred = clf.predict(X_test)
 
     # Compute recalls for dumb and trained classifiers
-    recall_train_dumb = recall_n(Y_train_pred_dumb,
-                                 Y_train_orig,
-                                 n=N,
-                                 reduce_mean=True)
-    recall_test_dumb = recall_n(Y_test_pred_dumb,
-                                Y_test_orig,
-                                n=N,
-                                reduce_mean=True)
-    recall_train = recall_n(Y_train_pred,
-                            Y_train_orig,
-                            n=N,
-                            reduce_mean=True)
-    recall_test = recall_n(Y_test_pred,
-                           Y_test_orig,
-                           n=N,
-                           reduce_mean=True)
+    weighted_recall_n = partial(recall_n, n=N, reduce_mean=True)
+    recall_train_dumb = weighted_recall_n(Y_train_pred_dumb, Y_train_orig)
+    recall_test_dumb = weighted_recall_n(Y_test_pred_dumb, Y_test_orig)
+    recall_train = weighted_recall_n(Y_train_pred, Y_train_orig)
+    recall_test = weighted_recall_n(Y_test_pred, Y_test_orig)
 
     # Compute AUC for trained classifier
     auc = mean_auc(Y_test_pred, Y_test_orig)
 
     # Print and save performances
-    perf = "PERFORMANCES:"
-    perf += "\n  DUMB BASELINE:"
-    perf += "\n    > Recall@" + str(N) + " TRAIN: "
-    perf += str(recall_train_dumb)
-    perf += "\n    > Recall@" + str(N) + " TEST: "
-    perf += str(recall_test_dumb)
-    perf += "\n  MODEL:"
-    perf += "\n    > Recall@" + str(N) + " TRAIN: "
-    perf += str(recall_train)
-    perf += "\n    > Recall@" + str(N) + " TEST: "
-    perf += str(recall_test)
-    perf += "\n    > Mean ROC AUC TEST: "
-    perf += str(auc)
-
-    if verbose:
-        print("\n>> Performances:")
-        print(perf)
+    perf = f"""
+    PERFORMANCES:
+        DUMB BASELINE:
+            Recall@{str(N)} TRAIN: {str(recall_train_dumb)}
+            Recall@{str(N)} TEST: {str(recall_test_dumb)}
+        MODEL:
+            Recall@{str(N)} TRAIN: {str(recall_train)}
+            Recall@{str(N)} TEST: {str(recall_test)}
+            Mean ROC AUC TEST: {str(auc)}
+    """
+    print(perf)
 
     # Print and save recap on experiment
     desc = "Experiment: " + ID
