@@ -18,7 +18,6 @@ import json
 import os
 import pickle
 import shutil
-from glob import glob
 
 # data management
 import matplotlib.pyplot as plt
@@ -37,10 +36,10 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.svm import SVC
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import WeightedRandomSampler
-import torch.nn.init as init
 
 # custom modules
 from a7_label import dumb_tagger
+from src.utils.file import get_json_files_in_dir
 from tools import (
     mask_rows,
     mkdir,
@@ -852,29 +851,24 @@ def decoding_experiment(configuration="spec_template.json",
     # --- SAMPLING WEIGHTS ---
     # ------------------------
     # Groups definition (for CV splits, loss reweighting and sampling)
-    meta["group"] = (meta["collection_id"]
-                     .astype(str)
-                     + " "
-                     + meta["cognitive_paradigm_cogatlas"]
-                       .astype(str))
+    meta = (
+        meta.assign(
+            group=lambda df: (df["collection_id"].astype(str) + " " + df["cognitive_paradigm_cogatlas"].astype(str))
+        )
+    )
 
     # Reweighting samples if required
-    weighted_samples = False
-    if (
-            config["torch_params"].get("group_power")
-            and
-            config["torch_params"]["group_power"] < 1.0
-    ):
-        weighted_samples = True
-
+    weighted_samples = (
+        config["torch_params"].get("group_power")
+        and config["torch_params"]["group_power"] < 1.0
+    )
+    if weighted_samples:
         group_size = meta.groupby("group")["kept"].count()
         group_size.name = "group_size"
 
         # sampling weights
-        group_weights = meta.join(group_size,
-                                  on="group")["group_size"]
-        group_weights = (group_weights ** config["torch_params"]["group_power"]
-                         / group_weights)
+        group_weights = meta.join(group_size, on="group")["group_size"]
+        group_weights = (group_weights ** config["torch_params"]["group_power"] / group_weights)
         sample_weights = group_weights.values.reshape((-1, 1))
         sample_weights_train = sample_weights[~mask_test]
         X_train = np.hstack((sample_weights_train, X_train))
@@ -1279,16 +1273,10 @@ def main():
     if args.verbose:
         print("\n>>> Verbosity turned on <<<\n")
 
-    if os.path.isdir(args.configuration):
-        configurations = glob(args.configuration + "*.json")
-    elif args.configuration[-5:] == ".json":
-        configurations = [args.configuration]
-    else:
-        raise ValueError("Please enter a configuration file "
-                         "or a folder containing configurations")
+    configurations = get_json_files_in_dir(args.configuration)
 
     if args.verbose:
-        print("Configurations used:", configurations)
+        print(f"Configurations used:{configurations}")
 
     # ----------------------
     # --- RUN EXPERIMENT ---
