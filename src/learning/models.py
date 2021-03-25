@@ -1,9 +1,6 @@
-# IMPORTS
 import torch
-import torch.nn.functional as F
 
 
-# MODELS
 class ModelLinear(torch.nn.Module):
     """Basic linear model used for logistic regression"""
 
