@@ -34,7 +34,7 @@ from sklearn.base import BaseEstimator
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, train_test_split
 from sklearn.svm import SVC
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import WeightedRandomSampler
@@ -401,10 +401,16 @@ class PytorchEstimator(BaseEstimator):
         self.model = model.to(device)
 
         # Dataset
-        dataset = DatasetFromNp(
-            X,
-            y,
-            device=device
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        train_dataset = DatasetFromNp(
+            X_train,
+            y_train,
+            device=device,
+        )
+        val_dataset = DatasetFromNp(
+            X_test,
+            y_test,
+            device=device,
         )
 
         #
@@ -424,7 +430,7 @@ class PytorchEstimator(BaseEstimator):
         #
         # === Training ===
         #
-        iterator = tqdm.trange(self.epochs)
+        iterator = range(self.epochs)
 
         if (not self.batch_size) | (self.batch_size == -1):
             batch_size = len(X)
@@ -437,21 +443,26 @@ class PytorchEstimator(BaseEstimator):
             gamma=0.8
         )
 
-        if sample_weights is None:
-            sampler = None
-        else:
-            sampler = WeightedRandomSampler(sample_weights,
-                                            len(X))
+        sampler = None if sample_weights is None else WeightedRandomSampler(sample_weights, len(X))
 
-        loader = DataLoader(dataset,
+        loader = DataLoader(train_dataset,
                             batch_size=batch_size,
                             sampler=sampler,
                             shuffle=sampler is None,
                             num_workers=0,
                             # pin_memory=not self.sample_gpu,
                             timeout=120)
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            sampler=sampler,
+            shuffle=sampler is None,
+            num_workers=0,
+            # pin_memory=not self.sample_gpu,
+            timeout=120,
+        )
 
-        for epoch in iterator:
+        for index, epoch in enumerate(iterator):
             # reset total loss for this epoch
             current_loss = 0
 
@@ -489,9 +500,25 @@ class PytorchEstimator(BaseEstimator):
                 loss_train.backward()
                 optimizer.step()
 
-            # Save loss every *print_freq* epoch
-            if self.verbose:
+            current_val_loss = 0
+            for X_tensor, y_tensor in val_loader:
+                if self.gpu & (not self.sample_gpu):
+                    # store data on GPU
+                    X_tensor = X_tensor.to(device)
+                    y_tensor = y_tensor.to(device)
 
+                # Forward pass: Compute predicted y by passing x to the model
+                y_pred = self.model(X_tensor)
+
+                # Compute loss
+                loss_val = self.loss_func(y_pred, y_tensor)
+                loss_val = torch.mean(torch.sum(loss_val, 1))
+
+                current_val_loss += loss_val
+            # Save loss every *print_freq* epoch
+            print(index, current_loss / len(X_train), current_val_loss / len(X_test))
+
+            if self.verbose:
                 if not epoch % print_freq:
                     losses_train[epoch // print_freq] = current_loss
 
@@ -1219,9 +1246,6 @@ def main():
                              "of already trained model")
 
     args = parser.parse_args()
-
-    if args.verbose:
-        print("\n>>> Verbosity turned on <<<\n")
 
     configurations = get_json_files_in_dir(args.configuration)
 
