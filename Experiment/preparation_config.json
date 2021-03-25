@@ -68,7 +68,7 @@
     "scale":       false
   },
   "label": {
-    "id_test": [6618],
+    "id_test": [4438],
     "concepts_file": "../Data/labels/concepts.json",
     "apply_task_concept_map": true,
     "task_concept_map_file": "../Data/labels/cogatlas_tasks_concepts_bertrand_mini.csv",

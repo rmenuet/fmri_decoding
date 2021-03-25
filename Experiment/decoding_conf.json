@@ -18,7 +18,7 @@
     "threshold":        null
   },
 
-  "model_name":         "logreg_1nonlin",
+  "model_name":         "ModelLogReg1NonLin",
   "loss_func":          "logreg",
   "loss":{
     "group_power":      1.0,
@@ -36,15 +36,15 @@
   },
 
   "grid_params": {
-    "lr":             [1e-3],
+    "lr":             [3e-3],
     "l1_reg":         [1e-3],
     "l2_reg":         [1e-3],
     "latent_dim":     [300],
-    "hidden_dropout": [0.2]
+    "hidden_dropout": [0.3]
   },
 
   "evaluation": {
-    "test_IDs":         [6618],
+    "test_IDs":         [4438],
     "recall@N":         10
   }
 }

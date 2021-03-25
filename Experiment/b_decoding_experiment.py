@@ -18,564 +18,38 @@ import json
 import os
 import pickle
 import shutil
-from glob import glob
+from functools import partial
+from loguru import logger
 
 # data management
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import tqdm
 from sklearn import preprocessing
 
 # ML
 import torch
-from sklearn.base import BaseEstimator
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.svm import SVC
-from torch.utils.data import Dataset, DataLoader
-from torch.utils.data.sampler import WeightedRandomSampler
-import torch.nn.init as init
 
 # custom modules
-from a7_label import dumb_tagger
-from tools import (
+from src.learning import models
+from src.learning.estimators import PytorchEstimator
+from src.learning.losses import multinomial_cross_entropy
+from src.learning.metrics import mean_auc, recall_n
+from src.utils.dataframe import dumb_tagger
+from src.utils.file import get_json_files_in_dir, mkdir
+from src.tools import (
     mask_rows,
-    mkdir,
     yes_or_no,
     gridsearch_complexity,
     highly_corr_cols_np,
     one_compact_line,
-    recall_n,
-    mean_auc
-)
-from models import (
-    ModelLinear,
-    ModelLogReg,
-    ModelLogReg1NonLin,
-    ModelLogReg3NonLin,
-    ModelLogReg1NonLinBN,
-    ModelMultinomial,
-    ModelMultinomial1NonLin,
-    ModelMultinomial1NonLinBN,
-    ModelMultinomial3NonLin,
-    ModelMultinomial3NonLinBN
 )
 
 
-# ==============
-# === LOSSES ===
-# ==============
-def continuous_cross_entropy_with_logits(pred, soft_targets, tol=1e-6):
-    return (
-        - torch.round(soft_targets) * soft_targets
-        * torch.log(torch.clamp(torch.sigmoid(pred), tol, 1 - tol))
-        - torch.round(1 - soft_targets) * (1 - soft_targets)
-        * torch.log(torch.clamp(1 - torch.sigmoid(pred), tol, 1 - tol))
-    )
-
-
-def continuous_cross_entropy(pred, soft_targets):
-    return torch.mean(
-        torch.sum(
-            continuous_cross_entropy_with_logits(pred, soft_targets),
-            dim=1
-        )
-    )
-
-
-def multinomial_cross_entropy(pred, soft_targets):
-    return - soft_targets * torch.log_softmax(pred, dim=1)
-
-
-# ================
-# === DATASETs ===
-# ================
-class DatasetFromNp(Dataset):
-    def __init__(self,
-                 X, y,
-                 device=torch.device("cpu")):
-        self.X = torch.from_numpy(X).float().to(device)
-        self.y = torch.from_numpy(y).float().to(device)
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, index):
-        return (
-            self.X[index],
-            self.y[index]
-        )
-
-
-# ==============
-# === MODELS ===
-# ==============
-class PytorchEstimator(BaseEstimator):
-    """
-    A simple multi-labels logistic/multinomial regression model in Pytorch
-    wrapped as a scikit-learn estimator for an easier implementation
-    of cross-validations and pipelines.
-
-    Training is by default done on GPU (if available)
-    but prediction and scoring are done on CPU.
-
-    Contrary to scikit-learn's logistic regression:
-    - even if you only have one label, the target (provided for training
-      and returned for prediction) is expected to be a 2D array
-      (even if there is only 1 considered class
-      it cannot be of shape (n,) it must be (n,1))
-    - this implementation does not enforce binary labels/classes
-      as ground truth at train time: continuous probabilities (between 0 - 1)
-      can be provided as target of the fit function
-    - predictions are also returned as continuous values between 0 and 1
-      and should be thresholded for any exact classification or labelling task
-    """
-
-    def __init__(self,
-                 model_class=ModelLinear,
-                 loss_func=torch.nn.BCELoss(reduction='none'),
-                 scoring_func=None,
-                 epochs=1000, batch_size=-1,
-                 adam=False,
-                 lr=1e-1, momentum=0.9,
-                 l1_reg=0, l2_reg=0,
-                 weighted_samples=False,
-                 gpu=True, used_gpu=0, sample_gpu=False,
-                 verbose=0,
-                 **kwargs):
-        """
-        The model is not instanciated there, its layers' dimensions
-        will be infered from X and y shapes when using the 'fit' function
-
-        Parameters
-        ----------
-        :param model_class: class inheriting torch.nn.module, default linear
-            class that will be used to instanciate model
-            its constructor should have at least the following arguments:
-            - 'n_feature': the number of input features
-            - 'n_label': the nummber of labels
-            it also needs the following methods:
-            - 'forward(input)': returns the output
-              on which to apply the chosen loss
-            - 'predict_likelihood(input)': returns the likelihood
-              of each label for samples
-        :param loss_func: a PyTorch loss function
-            the loss function to be used for training and scoring:
-            - should accept at least 3 PyTorch.tensor arguments:
-              - the prediction of the model,
-              - the ground truth,
-              - an optional 'weight' kwarg
-            - should return a differentiable tensor
-              that can be backpropagated with .backward()
-        :param scoring_func: None or a function
-            if func: takes the same arguments loss_func, but as numpy.array
-            if None: the opposite of the loss is used
-        :param epochs: int, default=1000
-            number of epochs for training
-        :param batch_size: int, default=-1
-            number of samples in each batch, if -1: the whole dataset is used
-        :param adam: boolean, default=False
-            whether to use the Adam optimizer
-            if False, SGD is used
-        :param lr: float, default=0.1
-            learning rate for training
-        :param momentum: float, default=0.9
-            momentum used by the SGD optimizer (if used)
-        :param l1_reg: float
-            L1 regularization
-        :param l2_reg: float
-            L2 regularization
-        :param weighted_samples: boolean, default=False
-            if True: 1st dim of X corresponds to sampling weight
-            and sampling is activated
-        :param gpu: boolean, default=True
-            whether the model should be trained using GPU,
-            if False or if no GPU is available: the CPU is used
-        :param used_gpu: int, default=0
-            which GPU should be used (if gpu=True)
-        :param sample_gpu: boolean, default=False
-            whether to sample mini-batches directly on GPU or on CPU (before
-            transfering to GPU), empirically: strangely sampling on CPU and then
-                transfering to GPU seems quicker whenever the GPU is under heavy
-                load sampling on GPU might be relevant for big mini-batches
-        :param verbose: int, default=0
-            verbosity level (mainly used at train time)
-            0: nothing is printed
-            1: final loss is printed at the end of training
-            2: model parameters are displayed,
-                training progression is displayed,
-                loss curve is plotted
-        :param kwargs: any list of named arguments
-            is used to specify the model hyperparameters (architecture...)
-            when it is instanciated during execution of the fit() method
-        """
-        super().__init__()
-
-        self.model_class = model_class
-        self.loss_func = loss_func
-        self.scoring_func = scoring_func
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.adam = adam
-        self.lr = lr
-        self.momentum = momentum
-        self.l1_reg = l1_reg
-        self.l2_reg = l2_reg
-        self.weighted_samples = weighted_samples
-        self.gpu = gpu
-        self.used_gpu = used_gpu
-        self.sample_gpu = sample_gpu
-        self.verbose = verbose
-
-        if kwargs:
-            # additional arguments keys stored for use within fit()
-            self.additional_args = list(kwargs)
-            # additional arguments stored as properties for cross_val
-            self.__dict__.update(kwargs)
-        else:
-            self.additional_args = []
-
-        if verbose > 1:
-            print("Model will be instanciated using the following arguments:",
-                  self.__dict__)
-
-    @classmethod
-    def from_file(cls, model_file, **kwargs):
-        # Build model estimator from arguments
-        model_estimator = cls(**kwargs)
-
-        # Extract arguments required to build the model
-        args = {}
-        for key in model_estimator.additional_args:
-            args[key] = model_estimator.__dict__[key]
-
-        # Build the model
-        model_estimator.model = torch.load(model_file)
-
-        # Load the parameters from the saved file
-        # model_estimator.model.load_state_dict(torch.load(model_file))
-
-        return model_estimator
-
-    def _get_param_names(self):
-        """
-        Overrides the default class method so that additional
-        kwargs parameters are taken into account
-        (the default class method looks for the model parameters
-        in its class constructor signature, here we look among the
-        properties of the object)
-        """
-        return sorted([p
-                       for p in self.__dict__
-                       if p != 'additional_args'])
-
-    @staticmethod
-    def check_X_y_weights(X, y=None, sample_weights=None):
-        """
-        Check that X, y (and sample_weights if provided) have the proper sizes
-        and values
-        """
-        # X checking
-        try:
-            assert np.isfinite(np.max(X)), "X should only contain finite " \
-                                           "numerical values"
-        except Exception as e:
-            print(str(e))
-            raise RuntimeError("X should be a numerical array")
-
-        # y checking
-        if y is not None:
-            try:
-                assert not np.isnan(np.min(y))
-            except Exception as e:
-                print(str(e))
-                raise RuntimeError(
-                    "y should not contain NaN values"
-                )
-
-            try:
-                assert (np.ndim(X) == np.ndim(y) == 2), "X and y should be " \
-                                                        "2-dim arrays"
-                assert (len(X) == len(y)), "X and y should have the same " \
-                                           "'n_sample' first dimension"
-            except Exception as e:
-                print(str(e))
-                raise RuntimeError(
-                    "y should be a numerical array of the same size than X"
-                )
-
-            try:
-                assert ((np.min(y) >= 0)
-                        and
-                        (np.max(y) <= 1)), "y values should be between 0 and 1"
-                return y
-            except Exception as e:
-                # rounding issues might produce values outside of the
-                # [0,1] range that we must correct
-                y_corrected = y.copy()
-                y_corrected[y < 0] = 0
-                y_corrected[y > 1] = 1
-                print("y should contain only values between 0 and 1")
-                print(str(e))
-
-                # returning the corrected y (bounded between 0 and 1)
-                return y_corrected
-
-        # sample_weights checking
-        if sample_weights is not None:
-            try:
-                assert (np.min(sample_weights) >= 0), "sample weights should" \
-                                                      " be positive values"
-                assert (len(sample_weights) == len(X)), "there should be" \
-                                                        " exactly one weight" \
-                                                        " per sample"
-            except Exception as e:
-                print(str(e))
-                raise RuntimeError(
-                    "sample_weights should be a numerical array "
-                    "of size n_samples and containing positive values"
-                )
-
-    def check_model(self):
-        try:
-            getattr(self, "model")
-            n_feature = list(self.model.state_dict().values())[0].shape[1]
-            n_label = list(self.model.state_dict().values())[-1].shape[0]
-            return n_feature, n_label
-        except AttributeError:
-            raise RuntimeError("You must train (fit) model first")
-
-    def fit(self, X, y,
-            sample_weights=None, weighted_samples=False,
-            n_jobs=0):
-        """
-        This is where the model is created (as input/output dimensions were
-        unknown before) and trained.
-        Even if the model is trained on GPU, it is returned on CPU so as to save
-        GPU memory.
-
-        :param X: numerical array-like, shape = (n_samples, n_features)
-            features to be used
-        :param y: numerical array-like, shape = (n_samples, n_classes)
-            target labels (probability between 0 & 1 for each class) to be used
-        :param sample_weights: numerical array-like, shape = (n_samples)
-            sample weights to be used at train time
-        :param weighted_samples: boolean, default=False
-            if True, the 1st column of X is expected to be the samples weights
-            useful to maintain samples weighting during cross-validation
-        """
-        y = self.check_X_y_weights(X, y, sample_weights)
-        _, self.n_label = y.shape
-
-        #
-        # === Weights building ===
-        #
-        if weighted_samples:
-            sample_weights = X[:, 0]
-            X = X[:, 1:]
-        self.n_sample, self.n_feature = X.shape
-
-        #
-        # === Model instanciation ===
-        #
-        args = {}
-        for key in self.additional_args:
-            args[key] = self.__dict__[key]
-
-        model = self.model_class(n_feature=self.n_feature,
-                                 n_label=self.n_label,
-                                 **args)
-
-        # === Device allocation ===
-        cpu = torch.device("cpu")
-        device = cpu
-        if self.gpu:
-            device = torch.device("cuda:" + str(self.used_gpu)
-                                  if torch.cuda.is_available()
-                                  else "cpu")
-
-        self.model = model.to(device)
-
-        # Dataset
-        dataset = DatasetFromNp(
-            X,
-            y,
-            device=device
-        )
-
-        #
-        # === optimizer selection ===
-        #
-        if self.adam:
-            optimizer = torch.optim.Adam(self.model.parameters(),
-                                         lr=self.lr)
-        else:
-            optimizer = torch.optim.SGD(self.model.parameters(),
-                                        lr=self.lr,
-                                        momentum=self.momentum)
-
-        print_freq = max(self.epochs // 50, 1)
-        losses_train = np.zeros(((self.epochs - 1) // print_freq) + 1)
-
-        #
-        # === Training ===
-        #
-        iterator = tqdm.trange(self.epochs)
-
-        if (not self.batch_size) | (self.batch_size == -1):
-            batch_size = len(X)
-        else:
-            batch_size = self.batch_size
-
-        exp_lrs = torch.optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=10,
-            gamma=0.8
-        )
-
-        if sample_weights is None:
-            sampler = None
-        else:
-            sampler = WeightedRandomSampler(sample_weights,
-                                            len(X))
-
-        loader = DataLoader(dataset,
-                            batch_size=batch_size,
-                            sampler=sampler,
-                            shuffle=sampler is None,
-                            num_workers=0,
-                            # pin_memory=not self.sample_gpu,
-                            timeout=120)
-
-        for epoch in iterator:
-            # reset total loss for this epoch
-            current_loss = 0
-
-            # step for learning rate decrease
-            exp_lrs.step()
-
-            # run mini-batch
-            for X_tensor, y_tensor in loader:
-                # if the loader does not directly load on GPU
-                if self.gpu & (not self.sample_gpu):
-                    # store data on GPU
-                    X_tensor = X_tensor.to(device)
-                    y_tensor = y_tensor.to(device)
-
-                # Forward pass: Compute predicted y by passing x to the model
-                y_pred = self.model(X_tensor)
-
-                # Compute loss
-                loss_train = self.loss_func(y_pred, y_tensor)
-                loss_train = torch.mean(torch.sum(loss_train, 1))
-
-                current_loss += loss_train
-
-                # compute regularizations
-                if self.l1_reg:
-                    for W in self.model.parameters():
-                        loss_train += self.l1_reg * W.norm(1)
-
-                if self.l2_reg:
-                    for W in self.model.parameters():
-                        loss_train += self.l2_reg * W.norm(2)
-
-                # Backprop: zero gradients, backward pass, update weights
-                optimizer.zero_grad()
-                loss_train.backward()
-                optimizer.step()
-
-            # Save loss every *print_freq* epoch
-            if self.verbose:
-
-                if not epoch % print_freq:
-                    losses_train[epoch // print_freq] = current_loss
-
-        #
-        # === Free (some) GPU memory ===
-        #
-        self.model = model.to(cpu)
-        torch.cuda.empty_cache()
-
-        #
-        # === Display training perf ===
-        #
-        if self.verbose > 1:
-            plt.plot(np.arange(0, self.epochs, print_freq),
-                     losses_train,
-                     label="Train")
-            plt.title("Loss on TRAIN Dataset")
-            plt.xlabel("Epochs")
-            plt.ylabel("Loss (unregularized)")
-            plt.legend()
-            plt.show()
-        if self.verbose:
-            print("=> Final score:", self.score(X, y))
-
-        return self
-
-    def predict(self, X, y=None):
-        """Prediction using the trained model (on CPU)"""
-        self.check_model()
-        self.check_X_y_weights(X)
-
-        self.model.eval()
-        y_pred = self.model.predict_proba(
-            torch
-            .from_numpy(X)
-            .float()
-            .to(torch.device("cpu"))
-        ).detach().numpy()
-
-        return y_pred
-
-    def forward(self, X):
-        """Prediction using the trained model (on CPU)"""
-        self.check_model()
-        self.check_X_y_weights(X)
-
-        self.model.eval()
-        y_pred = self.model.forward(
-            torch
-            .from_numpy(X)
-            .float()
-            .to(torch.device("cpu"))
-        ).detach().numpy()
-
-        return y_pred
-
-    def score(self, X, y):
-        """
-        Scoring with the provided scoring function
-        using the trained model (on CPU)
-        """
-        n_feature, _ = self.check_model()
-        _, n_label = y.shape
-        y = self.check_X_y_weights(X, y)
-
-        if X.shape[1] == (n_feature + 1):
-            X = X[:, 1:]
-
-        assert (X.shape[1] == n_feature), "X is of the wrong shape"
-
-        if self.scoring_func is None:
-            y_pred = self.forward(X)
-
-            loss = self.loss_func(torch.from_numpy(y_pred).float(),
-                                  torch.from_numpy(y).float())
-            loss = torch.mean(torch.sum(loss, 1)).numpy()
-
-            return - loss
-        else:
-            y_pred = self.predict(X)
-            return self.scoring_func(y_pred, y)
-
-# ================================================
-# === FUNCTION TO RUN FULL DECODING EXPERIMENT ===
-# ================================================
 def decoding_experiment(configuration="spec_template.json",
                         mode="train",
                         folder="",
@@ -619,8 +93,7 @@ def decoding_experiment(configuration="spec_template.json",
     #   (filename without JSON extension)
     ID = configuration[:-5].split("/")[-1]
 
-    if verbose:
-        print("=== Decoding experiment", ID, "===")
+    logger.info(f"=== Decoding experiment {ID} ===")
 
     with open(configuration, encoding='utf-8') as f:
         config = json.load(f)
@@ -631,19 +104,19 @@ def decoding_experiment(configuration="spec_template.json",
 
     # Control whether the experiment was already run
     # and results mught be overwritten
-    if (
-            (not force)
-            &
-            ((not mkdir(path)) & (mode == "train"))
-    ):
+    should_ask_question_for_experiment = (
+        (not force)
+        &
+        ((not mkdir(path)) & (mode == "train"))
+    )
+    if should_ask_question_for_experiment:
         if not yes_or_no("\nExperiment already run, "
                          "ARE YOU SURE you want to retrain model? "):
             print("Execution aborted")
             return 0
 
     # Copy original configuration to backup folder
-    shutil.copy(configuration,
-                path + configuration.split("/")[-1])
+    shutil.copy(configuration, path + configuration.split("/")[-1])
 
     # If GPU is used, limit CUDA visibility to this device
     if used_gpu >= 0:
@@ -661,15 +134,6 @@ def decoding_experiment(configuration="spec_template.json",
         "sk_logreg_cv": LogisticRegressionCV,
         "sk_svm": SVC,
         "sk_lda": LinearDiscriminantAnalysis,
-        "logreg": ModelLogReg,
-        "logreg_1nonlin": ModelLogReg1NonLin,
-        "logreg_3nonlin": ModelLogReg3NonLin,
-        "logreg_1nonlin_bn": ModelLogReg1NonLinBN,
-        "multinomial": ModelMultinomial,
-        "multinomial_1nonlin": ModelMultinomial1NonLin,
-        "multinomial_1nonlin_bn": ModelMultinomial1NonLinBN,
-        "multinomial_3nonlin": ModelMultinomial3NonLin,
-        "multinomial_3nonlin_bn": ModelMultinomial3NonLinBN,
     }
 
     # -------------------------
@@ -687,9 +151,7 @@ def decoding_experiment(configuration="spec_template.json",
     param_grid = config["grid_params"]
     exploratory_comp = gridsearch_complexity(param_grid)
 
-    if verbose:
-        print("\n>> Preparation")
-        print("  > Gridsearch size:", exploratory_comp)
+    logger.info(f"Gridsearch size: {exploratory_comp}")
 
     # Initial values for model instanciation
     param_ini = {k: v[0] for (k, v) in param_grid.items()}
@@ -698,29 +160,26 @@ def decoding_experiment(configuration="spec_template.json",
     # --- DATA LOADING ---
     # --------------------
     # Metadata loading
-    meta = pd.read_csv(config["data"].get("meta_file"),
-                       low_memory=False,
-                       index_col=0)
-    meta = meta[meta["kept"]]
+    meta = (
+        pd.read_csv(config["data"].get("meta_file"), low_memory=False, index_col=0)
+        .loc[lambda df: df.kept]
+    )
 
     # Labels vocabulary loading
     with open(config["data"]["concepts_file"], encoding='utf-8') as f:
         concept_names = [line.rstrip('\n') for line in f]
-        concept_names = [concept_name.strip().lower()
-                         for concept_name in concept_names]
-        concept_names.sort()
+        concept_names = sorted([concept_name.strip().lower()
+                         for concept_name in concept_names])
 
     # Features loading
     with open(config["data"].get("features_file"), 'rb') as f:
         X = pickle.load(f)
 
     # Samples' labels loading
-    labels = pd.read_csv(config["data"]["labels_file"],
-                         low_memory=False, index_col=0)
+    labels = pd.read_csv(config["data"]["labels_file"], low_memory=False, index_col=0)
 
-    if verbose:
-        print("  > Data loaded")
-        print("    > Number of kept fMRIs in dataset", len(meta))
+    logger.info("Data loaded")
+    logger.info(f"Number of kept fMRIs in dataset {len(meta)}")
 
     # Only keep samples (fMRIs metadata and their embeddings) with labels
     mask_labelled = ~labels.iloc[:, 0].isna()
@@ -734,9 +193,7 @@ def decoding_experiment(configuration="spec_template.json",
 
     # Extract vocabulary of labels present in the dataset
     vocab_orig = np.array(Y.columns)
-    if verbose:
-        print("    > Number of labels in the whole dataset (TRAIN+TEST):",
-              len(vocab_orig))
+    logger.info(f"Number of labels in the whole dataset (TRAIN+TEST): {len(vocab_orig)}")
 
     # Convert Y to np.array of int
     Y = Y.values * 1
@@ -757,20 +214,17 @@ def decoding_experiment(configuration="spec_template.json",
                 ~meta[blacklist_key].isin(blacklist[blacklist_key])
             )
         meta, X, Y = mask_rows(mask_not_blacklisted, meta, X, Y)
-    if verbose:
-        print("    > Number of fMRIs with labels:", len(meta))
-        print("    > Number of labels in Train:", len(vocab_orig))
+
+    logger.info(f"Number of fMRIs with labels: {len(meta)}")
+    logger.info(f"Number of labels in Train: {len(vocab_orig)}")
 
     # Filtering labels with too few instances in train
-    # TODO: cleaner
-    mask_test = (meta["collection_id"]
-                 .isin(config["evaluation"]["test_IDs"]))
+    mask_test = (meta["collection_id"].isin(config["evaluation"]["test_IDs"]))
     colmask_lab_in_train = (Y[~mask_test].sum(axis=0)
                             >= config["labels"]["min_train"])
-    if verbose:
-        print("      > Removed",
-              len(vocab_orig) - int(colmask_lab_in_train.sum()),
-              "labels that were too rare")
+
+    number_of_rare_labels = len(vocab_orig) - int(colmask_lab_in_train.sum())
+    logger.info(f"Removed {number_of_rare_labels} labels that were too rare")
 
     # updating X and Y
     Y = Y[:, colmask_lab_in_train]
@@ -785,24 +239,22 @@ def decoding_experiment(configuration="spec_template.json",
                                                   vocab_current,
                                                   0.95,
                                                   True)
-    if verbose:
-        print("      > Removed",
-              Y.shape[1] - len(labels_low_corr_indices),
-              "labels that were too correlated")
+
+    number_of_too_correlated_labels = Y.shape[1] - len(labels_low_corr_indices)
+    logger.info(f"Removed {number_of_too_correlated_labels} labels that were too correlated")
+
     Y = Y[:, labels_low_corr_indices]
     vocab_current = vocab_current[labels_low_corr_indices]
 
     # Update of data and testset mask after highly correlated labels removal
     mask_has_low_corr_lab = (np.sum(Y, axis=1) != 0)
     meta, X, Y = mask_rows(mask_has_low_corr_lab, meta, X, Y)
-    mask_test = (meta["collection_id"]
-                 .isin(config["evaluation"]["test_IDs"]))
+    mask_test = meta["collection_id"].isin(config["evaluation"]["test_IDs"])
     
     # save original version of labels to predict before labels inference
     Y_orig = Y.copy()
     
-    if verbose:
-        print("    > Number of kept labels:", Y.shape[1])
+    logger.info(f"Number of kept labels: {Y.shape[1]}")
 
     # Concept values transformations
     if (config["labels"].get("transformation") == "none"
@@ -835,14 +287,9 @@ def decoding_experiment(configuration="spec_template.json",
         X_train = scaler.transform(X_train)
         X_test = scaler.transform(X_test)
     elif config["data"].get("scaling") == "samples":
-        X_train = preprocessing.scale(X_train,
-                                      with_mean=True,
-                                      with_std=True,
-                                      axis=1)
-        X_test = preprocessing.scale(X_test,
-                                     with_mean=True,
-                                     with_std=True,
-                                     axis=1)
+        preprocessing_on_samples = partial(preprocessing.scale, with_mean=True, with_std=True, axis=1)
+        X_train = preprocessing_on_samples(X_train)
+        X_test = preprocessing_on_samples(X_test)
     elif config["data"].get("scaling") == "max":
         X_train_max = X_train.max()
         X_train = X_train / X_train_max
@@ -852,67 +299,47 @@ def decoding_experiment(configuration="spec_template.json",
     # --- SAMPLING WEIGHTS ---
     # ------------------------
     # Groups definition (for CV splits, loss reweighting and sampling)
-    meta["group"] = (meta["collection_id"]
-                     .astype(str)
-                     + " "
-                     + meta["cognitive_paradigm_cogatlas"]
-                       .astype(str))
+    meta = (
+        meta.assign(
+            group=lambda df: (df["collection_id"].astype(str) + " " + df["cognitive_paradigm_cogatlas"].astype(str))
+        )
+    )
 
     # Reweighting samples if required
-    weighted_samples = False
-    if (
-            config["torch_params"].get("group_power")
-            and
-            config["torch_params"]["group_power"] < 1.0
-    ):
-        weighted_samples = True
-
+    weighted_samples = (
+        config["torch_params"].get("group_power")
+        and config["torch_params"]["group_power"] < 1.0
+    )
+    if weighted_samples:
         group_size = meta.groupby("group")["kept"].count()
         group_size.name = "group_size"
 
         # sampling weights
-        group_weights = meta.join(group_size,
-                                  on="group")["group_size"]
-        group_weights = (group_weights ** config["torch_params"]["group_power"]
-                         / group_weights)
+        group_weights = meta.join(group_size, on="group")["group_size"]
+        group_weights = (group_weights ** config["torch_params"]["group_power"] / group_weights)
         sample_weights = group_weights.values.reshape((-1, 1))
         sample_weights_train = sample_weights[~mask_test]
         X_train = np.hstack((sample_weights_train, X_train))
 
-    if verbose:
-        print("  > Data preprocessed")
-        print("    > Samples kept in TRAIN", len(X_train))
-        print("    > Samples kept in TEST", len(X_test))
-        if weighted_samples:
-            print("  > Min/Max sampling weight in TRAIN:",
-                  sample_weights_train.min(),
-                  "/",
-                  sample_weights_train.max())
+    logger.info("Data preprocessed")
+    logger.info(f"Samples kept in TRAIN: {len(X_train)}")
+    logger.info(f"Samples kept in TEST: {len(X_test)}")
+    if weighted_samples:
+        logger.info(f"Min/Max sampling weight in TRAIN: {sample_weights_train.min()} / {sample_weights_train.max()}")
 
     # -------------------
     # --- SAVING DATA ---
     # -------------------
-    with open(path + "X_train.p", 'wb') as f:
-        pickle.dump(X_train, f)
-    with open(path + "Y_train.p", 'wb') as f:
-        pickle.dump(Y_train, f)
-    with open(path + "Y_train_orig.p", 'wb') as f:
-        pickle.dump(Y_train_orig, f)
-    with open(path + "X_test.p", 'wb') as f:
-        pickle.dump(X_test, f)
-    with open(path + "Y_test.p", 'wb') as f:
-        pickle.dump(Y_test, f)
-    with open(path + "Y_test_orig.p", 'wb') as f:
-        pickle.dump(Y_test_orig, f)
-    with open(path + "indices_train.p", 'wb') as f:
-        pickle.dump(indices_train, f)
-    with open(path + "indices_test.p", 'wb') as f:
-        pickle.dump(indices_test, f)
-    pd.DataFrame(vocab_orig).to_csv(path + "vocab_orig.csv")
-    pd.DataFrame(vocab_current).to_csv(path + "vocab.csv")
+    for variable_name in ["X_train", "Y_train", "Y_train_orig", "X_test", "Y_test", "Y_test_orig", "indices_train", "indices_test"]:
+        output_path_for_variable = f"{path}{variable_name}.p"
+        with open(output_path_for_variable, "wb") as f:
+            # eval(name) retrieves the variable value which has this name
+            pickle.dump(eval(variable_name), f)
 
-    if verbose:
-        print("  > Preprocessed data saved")
+    pd.DataFrame(vocab_orig).to_csv(f"{path}vocab_orig.csv")
+    pd.DataFrame(vocab_current).to_csv(f"{path}vocab.csv")
+
+    logger.info("Preprocessed data saved")
 
     # ---------------------------
     # --- MODEL INSTANCIATION ---
@@ -925,7 +352,7 @@ def decoding_experiment(configuration="spec_template.json",
         clf_template = PytorchEstimator(
             gpu=(used_gpu > -1),
             used_gpu=used_gpu,
-            model_class=model_classes[config["model_name"]],
+            model_class=getattr(models, config["model_name"]),
             loss_func=loss_functions[config["loss"]["loss_func_name"]],
             epochs=config["torch_params"]["epochs"],
             batch_size=config["torch_params"]["batch_size"],
@@ -937,18 +364,15 @@ def decoding_experiment(configuration="spec_template.json",
     # ----------------
     # --- TRAINING ---
     # ----------------
-    print("=" * 60)
-    print(">> Launch training")
+    logger.info("Launch training")
 
     clf, clf_grid = None, None
     if exploratory_comp == 1:
-        if verbose:
-            print("  > Single model training...")
+        logger.info("Single model training...")
         if estimator_type == "sklearn":
             clfs = {}
             for i, concept in enumerate(vocab_current):
-                if verbose:
-                    print("    > Training for", concept)
+                logger.info(f"Training for {concept}")
                 clf = clf_template(**param_ini)
                 clf.fit(X_train, Y_train[:, i])
                 clfs[concept] = clf
@@ -1000,8 +424,7 @@ def decoding_experiment(configuration="spec_template.json",
                      weighted_samples=weighted_samples)
 
         # Grid search detailed results backup
-        pd.DataFrame(clf_grid.cv_results_).to_csv(path
-                                                  + "per_param_results.csv")
+        pd.DataFrame(clf_grid.cv_results_).to_csv(f"{path}per_param_results.csv")
 
         clf = clf_grid.best_estimator_
 
@@ -1049,44 +472,27 @@ def decoding_experiment(configuration="spec_template.json",
         Y_test_pred = clf.predict(X_test)
 
     # Compute recalls for dumb and trained classifiers
-    recall_train_dumb = recall_n(Y_train_pred_dumb,
-                                 Y_train_orig,
-                                 n=N,
-                                 reduce_mean=True)
-    recall_test_dumb = recall_n(Y_test_pred_dumb,
-                                Y_test_orig,
-                                n=N,
-                                reduce_mean=True)
-    recall_train = recall_n(Y_train_pred,
-                            Y_train_orig,
-                            n=N,
-                            reduce_mean=True)
-    recall_test = recall_n(Y_test_pred,
-                           Y_test_orig,
-                           n=N,
-                           reduce_mean=True)
+    weighted_recall_n = partial(recall_n, n=N, reduce_mean=True)
+    recall_train_dumb = weighted_recall_n(Y_train_pred_dumb, Y_train_orig)
+    recall_test_dumb = weighted_recall_n(Y_test_pred_dumb, Y_test_orig)
+    recall_train = weighted_recall_n(Y_train_pred, Y_train_orig)
+    recall_test = weighted_recall_n(Y_test_pred, Y_test_orig)
 
     # Compute AUC for trained classifier
     auc = mean_auc(Y_test_pred, Y_test_orig)
 
     # Print and save performances
-    perf = "PERFORMANCES:"
-    perf += "\n  DUMB BASELINE:"
-    perf += "\n    > Recall@" + str(N) + " TRAIN: "
-    perf += str(recall_train_dumb)
-    perf += "\n    > Recall@" + str(N) + " TEST: "
-    perf += str(recall_test_dumb)
-    perf += "\n  MODEL:"
-    perf += "\n    > Recall@" + str(N) + " TRAIN: "
-    perf += str(recall_train)
-    perf += "\n    > Recall@" + str(N) + " TEST: "
-    perf += str(recall_test)
-    perf += "\n    > Mean ROC AUC TEST: "
-    perf += str(auc)
-
-    if verbose:
-        print("\n>> Performances:")
-        print(perf)
+    perf = f"""
+    PERFORMANCES:
+        DUMB BASELINE:
+            Recall@{str(N)} TRAIN: {str(recall_train_dumb)}
+            Recall@{str(N)} TEST: {str(recall_test_dumb)}
+        MODEL:
+            Recall@{str(N)} TRAIN: {str(recall_train)}
+            Recall@{str(N)} TEST: {str(recall_test)}
+            Mean ROC AUC TEST: {str(auc)}
+    """
+    print(perf)
 
     # Print and save recap on experiment
     desc = "Experiment: " + ID
@@ -1276,19 +682,10 @@ def main():
 
     args = parser.parse_args()
 
-    if args.verbose:
-        print("\n>>> Verbosity turned on <<<\n")
-
-    if os.path.isdir(args.configuration):
-        configurations = glob(args.configuration + "*.json")
-    elif args.configuration[-5:] == ".json":
-        configurations = [args.configuration]
-    else:
-        raise ValueError("Please enter a configuration file "
-                         "or a folder containing configurations")
+    configurations = get_json_files_in_dir(args.configuration)
 
     if args.verbose:
-        print("Configurations used:", configurations)
+        print(f"Configurations used:{configurations}")
 
     # ----------------------
     # --- RUN EXPERIMENT ---
