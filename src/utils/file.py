@@ -18,3 +18,16 @@ def get_json_files_in_dir(path):
                          "or a folder containing configurations")
 
     return configurations
+
+
+def mkdir(path):
+    """Creates a folder if it does not already exist,
+    returns True if the folder was created, else False."""
+    try:
+        created = False
+        if not os.path.exists(path):
+            os.makedirs(path)
+            created = True
+        return created
+    except OSError:
+        print('Error: Creating directory. ' + path)

@@ -35,21 +35,19 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.svm import SVC
 
 # custom modules
-from a7_label import dumb_tagger
+from src.learning import models
 from src.learning.estimators import PytorchEstimator
 from src.learning.losses import multinomial_cross_entropy
-from src.utils.file import get_json_files_in_dir
+from src.learning.metrics import mean_auc, recall_n
+from src.utils.dataframe import dumb_tagger
+from src.utils.file import get_json_files_in_dir, mkdir
 from src.tools import (
     mask_rows,
-    mkdir,
     yes_or_no,
     gridsearch_complexity,
     highly_corr_cols_np,
     one_compact_line,
-    recall_n,
-    mean_auc
 )
-from src.learning import models
 
 
 def decoding_experiment(configuration="spec_template.json",
@@ -221,8 +219,7 @@ def decoding_experiment(configuration="spec_template.json",
     logger.info(f"Number of labels in Train: {len(vocab_orig)}")
 
     # Filtering labels with too few instances in train
-    mask_test = (meta["collection_id"]
-                 .isin(config["evaluation"]["test_IDs"]))
+    mask_test = (meta["collection_id"].isin(config["evaluation"]["test_IDs"]))
     colmask_lab_in_train = (Y[~mask_test].sum(axis=0)
                             >= config["labels"]["min_train"])
 
