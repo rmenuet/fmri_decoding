@@ -1,0 +1,1750 @@
+{
+  "nv_path":       "../Data/neurovault/",
+  "cache_path":    "../output/",
+  "mask_file":     "../Data/masks/task_mask.nii.gz",
+  "dict_file":     "../Data/atlases/components_1024_task.nii.gz",
+  "meta_path":     "../Data/meta/",
+  "meta_file":     "fmris_meta.csv",
+
+  "collect": {
+    "download_mode": "offline",
+    "hcp_tags": "../Data/labels/hcp_tags.csv"
+  },
+
+  "filter": {
+    "output_colls": "colls_meta.csv",
+
+    "has_cog_paradigm":       false,
+    "has_tags":               false,
+    "has_task":               false,
+    "has_cont":               false,
+    "has_desc":               false,
+    "has_mod":                true,
+    "proper_mod":             true,
+    "proper_mod_param":       ["fMRI-BOLD"],
+    "not_duplicate":          true,
+    "enough_coverage":        true,
+    "enough_coverage_param":  60,
+    "enough_values":          true,
+    "enough_values_param":    10,
+    "centered":               true,
+    "centered_param":         15,
+    "unthresholded":          true,
+    "unthresholded_param":    0.2,
+    "min_max_abs_val":        true,
+    "min_max_abs_val_param":  1.0,
+    "max_max_abs_val":        true,
+    "max_max_abs_val_param":  100.0,
+    "proper_type":            true,
+    "proper_type_param":      ["T map",
+                               "Z map",
+                               "univariate-beta map"],
+    "min_fmri":               0,
+    "not_temporary":          true,
+    "coll_white_list":        [],
+    "coll_black_list":        []
+  },
+  "resample": {
+    "input_field":   "absolute_path",
+    "output_file":   "fmris_resamp_lin.csv",
+    "interpolation": "linear",
+    "overwrite":     true
+  },
+  "mask": {
+    "input_file":  "fmris_resamp_lin.csv",
+    "output_file": "fmris_masked.p"
+  },
+  "embed": {
+    "input_file":  "fmris_masked.p",
+    "output_file": "fmris_emb.p",
+    "center":      false,
+    "scale":       false,
+    "nan_max":     1.0
+  },
+  "impute": {
+    "input_file":  "fmris_emb.p",
+    "output_file": "fmris_emb_imp.p",
+    "imputation":  "median",
+    "scale":       false
+  },
+  "label": {
+    "id_test": [504, 1964, 2447, 2606, 2978, 3235, 3467, 4022, 4339, 4341, 4815, 5802, 6298, 6299],
+    "concepts_file": "../Data/labels/concepts.json",
+    "apply_task_concept_map": true,
+    "task_concept_map_file": "../Data/labels/cogatlas_tasks_concepts_bertrand_mini.csv",
+    "apply_rules": true,
+    "rules": [
+      {
+        "name": "all - left hand",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "left.*hand|l[\\s_]hand",
+          "labels": "left hand response execution,"
+        }
+      },
+      {
+        "name": "all - right hand",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "right.*hand|r[\\s_]hand",
+          "labels": "right hand response execution,"
+        }
+      },
+      {
+        "name": "all - left finger",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "left.*finger|l[\\s_]finger|left.*click",
+          "labels": "left finger response execution,"
+        }
+      },
+      {
+        "name": "all - right finger",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "right.*finger|r[\\s_]finger|right.*click",
+          "labels": "right finger response execution,"
+        }
+      },
+      {
+        "name": "all - left toe",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "left.*toe|l[\\s_]toe|left.*foot|l[\\s_]foot",
+          "labels": "left toe response execution,"
+        }
+      },
+      {
+        "name": "all - right toe",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "right.*toe|r[\\s_]toe|right.*foot|r[\\s_]foot",
+          "labels": "right toe response execution,"
+        }
+      },
+      {
+        "name": "all - face",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "[\\s_]face|^face",
+          "labels": "face perception,"
+        }
+      },
+      {
+        "name": "all - audition",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "audit|listen|hear|sound|music|noise|voice|acoust",
+          "labels": "audition,"
+        }
+      },
+      {
+        "name": "all - visual",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "visual|view|watch|picture|movie|moving",
+          "labels": "visual perception,"
+        }
+      },
+      {
+        "name": "all - working memory",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "rule|wm",
+          "labels": "working memory,"
+        }
+      },
+      {
+        "name": "all - visual word",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "visual word",
+          "labels": "visual word recognition,"
+        }
+      },
+      {
+        "name": "all - reading",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "read",
+          "labels": "reading,"
+        }
+      },
+      {
+        "name": "all - arithmetic",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "arithm|calcul",
+          "labels": "arithmetic processing,"
+        }
+      },
+      {
+        "name": "all - emotion",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "happy|angry",
+          "labels": "emotion perception,"
+        }
+      },
+      {
+        "name": "all - reward",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "rewarded",
+          "labels": "reward processing,"
+        }
+      },
+      {
+        "name": "all - loss",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "negative reward|punish|fail",
+          "labels": "loss processing,"
+        }
+      },
+      {
+        "name": "all - inhibition",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "succes[s]ful stop",
+          "labels": "response inhibition,"
+        }
+      },
+      {
+        "name": "all - uncertainty",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "uncertain",
+          "labels": "decision under uncertainty,"
+        }
+      },
+       {
+        "name": "all - checkerboard",
+        "filter": {
+          "field": "collection_id",
+          "pattern": ".*"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "checkerboard",
+          "labels": "visual perception,visual orientation,"
+        }
+      },
+     {
+        "name": "all - BART Control",
+        "filter": {
+          "field": "cognitive_paradigm_cogatlas",
+          "pattern": "balloon"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "control",
+          "labels": "response execution,decision, visual perception,"
+        }
+      },
+      {
+        "name": "all - BART Accept",
+        "filter": {
+          "field": "cognitive_paradigm_cogatlas",
+          "pattern": "balloon"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "accept|^pump",
+          "labels": "response selection, decision, decision under uncertainty, reward anticipation, risk processing, risk seeking, loss anticipation, visual perception,"
+        }
+      },
+      {
+        "name": "all - BART Cash",
+        "filter": {
+          "field": "cognitive_paradigm_cogatlas",
+          "pattern": "balloon"
+        },
+        "rule": {
+          "field": "ALL",
+          "pattern": "cash",
+          "labels": "response selection, decision, decision under uncertainty, reward processing, reward anticipation, risk processing, risk aversion, loss aversion, visual perception,"
+        }
+      },
+
+      {
+        "name": "coll 4337 - HCP EMOTION FACES",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "FACES",
+          "labels": "feature comparison, response selection, response execution, emotional face recognition,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP EMOTION SHAPES",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "SHAPES",
+          "labels": "feature comparison, response selection, response execution, visual form recognition,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP GAMBLING PUNISH",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "PUNISH",
+          "labels": "response selection, response execution, punishment processing,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP GAMBLING REWARD",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "PUNISH",
+          "labels": "response selection, response execution, reward processing,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP LANGUAGE MATH",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "MATH",
+          "labels": "response selection, response execution, auditory arithmetic processing,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP LANGUAGE STORY",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "STORY",
+          "labels": "response selection, response execution, auditory sentence recognition, story comprehension,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP MOTOR CUE",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "CUE",
+          "labels": "response selection, cueing, updating, visual perception,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP MOTOR LF",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "LF",
+          "labels": "response execution, left toe response execution,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP MOTOR LH",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "LH",
+          "labels": "response execution, left hand response execution,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP MOTOR RF",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "RF",
+          "labels": "response execution, right toe response execution,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP MOTOR RH",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "RH",
+          "labels": "response execution, right hand response execution,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP RELATIONAL MATCH",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "MATCH",
+          "labels": "feature comparison, response selection, response execution, visual form recognition, visual pattern recognition,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP RELATIONAL REL",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "REL",
+          "labels": "feature comparison, response selection, response execution, visual form recognition, relational comparison, visual pattern recognition,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP SOCIAL RANDOM",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "RANDOM",
+          "labels": "response selection, motion detection,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP SOCIAL TOM",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "TOM",
+          "labels": "response selection, motion detection, animacy perception, animacy decision,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP WM 0BK_BODY",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "0BK_BODY",
+          "labels": "response execution, working memory, body maintenance, visual body recognition,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP WM 0BK_FACE",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "0BK_FACE",
+          "labels": "response execution, working memory, face maintenance, visual face recognition,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP WM 0BK_PLACE",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "0BK_PLACE",
+          "labels": "response execution, working memory, place maintenance, visual place recognition,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP WM 0BK_TOOL",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "0BK_TOOL",
+          "labels": "response execution, working memory, tool maintenance, visual tool recognition,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP WM 2BK_BODY",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "2BK_BODY",
+          "labels": "response execution, working memory, body maintenance, visual body recognition, updating,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP WM 2BK_FACE",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "2BK_FACE",
+          "labels": "response execution, working memory, face maintenance, visual face recognition, updating,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP WM 2BK_PLACE",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "2BK_PLACE",
+          "labels": "response execution, working memory, place maintenance, visual place recognition, updating,"
+        }
+      },
+      {
+        "name": "coll 4337 - HCP WM 2BK_TOOL",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "2BK_TOOL",
+          "labels": "response execution, working memory, tool maintenance, visual tool recognition, updating,"
+        }
+      },
+
+      {
+        "name": "coll 4343 - stop signal GO",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "stopsignal_GO",
+          "labels": "response execution, visual perception,"
+        }
+      },
+      {
+        "name": "coll 4343 - stop signal STOP",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "STOP_RIGHT|STOP_LEFT",
+          "labels": "response inhibition, visual perception, audition,"
+        }
+      },
+      {
+        "name": "coll 4343 - stop signal BLANK",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "stopsignal_BLANK",
+          "labels": "visual perception,"
+        }
+      },
+      {
+        "name": "coll 4343 - BART CONTROL_ACCEPT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "bart_CONTROL_ACCEPT",
+          "labels": "response selection, decision, visual perception,"
+        }
+      },
+      {
+        "name": "coll 1952 - BART CONTROL_ACCEPT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 1952
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "control condition of the pump action",
+          "labels": "response selection, decision, visual perception,"
+        }
+      },
+      {
+        "name": "coll 4343 - BART CONTROL_CASHOUT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "bart_CONTROL_CASHOUT",
+          "labels": "response selection, decision, visual perception,"
+        }
+      },
+      {
+        "name": "coll 4343 - BART BALOON_ACCEPT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "bart_BALOON_ACCEPT",
+          "labels": "response selection, decision, decision under uncertainty, reward anticipation, risk processing, risk seeking, loss anticipation, visual perception,"
+        }
+      },
+      {
+        "name": "coll 1952 - BART BALOON_ACCEPT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 1952
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "pump condition",
+          "labels": "response selection, decision, decision under uncertainty, reward anticipation, risk processing, risk seeking, loss anticipation, visual perception,"
+        }
+      },
+      {
+        "name": "coll 4343 - BART BALOON_CASHOUT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "bart_BALOON_CASHOUT",
+          "labels": "response selection, decision, decision under uncertainty, reward processing, reward anticipation, risk processing, risk aversion, loss aversion, visual perception,"
+        }
+      },
+      {
+        "name": "coll 4343 - BART BALOON_CASHOUT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 1952
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "Response to acceptance",
+          "labels": "response selection, decision, decision under uncertainty, reward processing, reward anticipation, risk processing, risk aversion, loss aversion, visual perception,"
+        }
+      },
+      {
+        "name": "coll 4343 - BART BALOON_EXPLODE",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "bart_BALOON_EXPLODE",
+          "labels": "loss processing, visual perception,"
+        }
+      },
+      {
+        "name": "coll 1952 - BART BALOON_EXPLODE",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 1952
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "explosion",
+          "labels": "loss processing, visual perception,"
+        }
+      },
+      {
+        "name": "coll 4343 - PAM_ENC TASK",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "pamenc_TASK",
+          "labels": "visual perception, visual word recognition, visual recognition, visual working memory, working memory, association learning,"
+        }
+      },
+      {
+        "name": "coll 4343 - PAM_ENC CONTROL",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "pamenc_CONTROL",
+          "labels": "visual perception, visual recognition, visual working memory, working memory, association learning, response execution,"
+        }
+      },
+      {
+        "name": "coll 4343 - PAM_RET CORRECT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "pamret_CORRECT",
+          "labels": "visual perception, visual recognition, working memory retrieval, response execution,"
+        }
+      },
+      {
+        "name": "coll 4343 - PAM_RET INCORRECT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "pamret_INCORRECT",
+          "labels": "visual perception, visual recognition, working memory retrieval, response execution,"
+        }
+      },
+      {
+        "name": "coll 4343 - PAM_RET CONTROL",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "pamret_CONTROL",
+          "labels": "visual perception, visual word recognition, visual recognition, response execution,"
+        }
+      },
+      {
+        "name": "coll 4343 - SCAP CORRECT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "scap_CORRECT",
+          "labels": "visual perception, visual localization, visual working memory, response execution,"
+        }
+      },
+      {
+        "name": "coll 4343 - SCAP INCORRECT",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "scap_INCORRECT",
+          "labels": "visual perception, visual localization, visual working memory, response execution,"
+        }
+      },
+      {
+        "name": "coll 4343 - SCAP NO RESPONSE",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "scap_NO_RESPONSE",
+          "labels": "visual perception, visual localization, visual working memory,"
+        }
+      },
+      {
+        "name": "coll 4343 - TASKSWITCH SWITCH",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "taskswitch_SWITCH",
+          "labels": "visual perception, response execution, task switching,"
+        }
+      },
+      {
+        "name": "coll 4343 - TASKSWITCH NOSWITCH",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4343
+        },
+        "rule": {
+          "field": "name",
+          "pattern": "taskswitch_NOSWITCH",
+          "labels": "visual perception, response execution,"
+        }
+      },
+      {
+        "name": "coll 4342 - audio",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4342
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "audonly",
+          "labels": "audition, right finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4342 - video",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4342
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "vidonly",
+          "labels": "visual perception, right finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4342 - audio-video",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4342
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "audvid",
+          "labels": "audition, right finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4339 - expression_control",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "expression_control",
+          "labels": "visual perception, face perception,"
+        }
+      },
+      {
+        "name": "coll 4339 - expression_intention",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "expression_intention",
+          "labels": "visual perception, face perception, emotion recognition,"
+        }
+      },
+      {
+        "name": "coll 4339 - expression_sex",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "expression_sex",
+          "labels": "visual perception, face perception, gender discrimination,"
+        }
+      },
+      {
+        "name": "coll 4339 - face_control",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "face_control",
+          "labels": "visual perception, face perception, face perception,"
+        }
+      },
+      {
+        "name": "coll 4339 - face_sex",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "face_sex",
+          "labels": "visual perception, face perception, gender discrimination,"
+        }
+      },
+      {
+        "name": "coll 4339 - face_trusty",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "face_trusty",
+          "labels": "visual perception, face perception, facial trustworthiness recognition,"
+        }
+      },
+      {
+        "name": "coll 4339 - audio",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "audio",
+          "labels": "audition,"
+        }
+      },
+      {
+        "name": "coll 4339 - calculaudio",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "calculaudio",
+          "labels": "audition, arithmetic processing,"
+        }
+      },
+      {
+        "name": "coll 4339 - calculvideo",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "calculvideo",
+          "labels": "visual perception, arithmetic processing,"
+        }
+      },
+      {
+        "name": "coll 4339 - clicDaudio",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "clicDaudio",
+          "labels": "audition, response selection, response execution, right finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4339 - clicDvideo",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "clicDvideo",
+          "labels": "visual perception, response selection, response execution, right finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4339 - clicGaudio",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "clicGaudio",
+          "labels": "audition, response selection, response execution, left finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4339 - clicGvideo",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "clicGvideo",
+          "labels": "visual perception, response selection, response execution, left finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4339 - computation",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "computation",
+          "labels": "arithmetic processing,"
+        }
+      },
+      {
+        "name": "coll 4339 - damier_H",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "damier_H",
+          "labels": "visual perception,"
+        }
+      },
+      {
+        "name": "coll 4339 - damier_V",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "damier_V",
+          "labels": "visual perception,"
+        }
+      },
+      {
+        "name": "coll 4339 - object_grasp",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "object_grasp",
+          "labels": "motor control, motor planning, response selection, response execution, right hand response execution,"
+        }
+      },
+      {
+        "name": "coll 4339 - object_orientation",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "object_orientation",
+          "labels": "visual perception, visual orientation,"
+        }
+      },
+      {
+        "name": "coll 4339 - rotation_hand",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "rotation_hand",
+          "labels": "response selection, visual body recognition, mental rotation,"
+        }
+      },
+      {
+        "name": "coll 4339 - rotation_side",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "rotation_side",
+          "labels": "response selection, visual body recognition,"
+        }
+      },
+      {
+        "name": "coll 4339 - saccade",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "saccade",
+          "labels": "visual perception, visual localization,"
+        }
+      },
+      {
+        "name": "coll 4339 - motor-cognitive",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "motor-cognitive",
+          "labels": "response selection, response execution, left finger response execution, right finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4339 - false_belief_audio",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "false_belief_audio",
+          "labels": "audition, auditory sentence recognition, sentence processing, theory of mind,"
+        }
+      },
+      {
+        "name": "coll 4339 - false_belief_video",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "false_belief_video",
+          "labels": "visual perception, reading, visual word recognition, sentence processing, theory of mind,"
+        }
+      },
+      {
+        "name": "coll 4339 - mecanistic_audio",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "mecanistic_audio",
+          "labels": "audition, auditory sentence recognition, story comprehension,"
+        }
+      },
+      {
+        "name": "coll 4339 - mecanistic_video",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "mecanistic_video",
+          "labels": "visual perception, visual word recognition, sentence processing,"
+        }
+      },
+      {
+        "name": "coll 4339 - non_speech",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "non_speech",
+          "labels": "audition,"
+        }
+      },
+      {
+        "name": "coll 4339 - speech",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "speech",
+          "labels": "audition, voice perception, speech perception"
+        }
+      },
+      {
+        "name": "coll 4339 - triangle_intention",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "triangle_intention",
+          "labels": "response selection, motion detection, animacy perception, animacy decision"
+        }
+      },
+      {
+        "name": "coll 4339 - triangle_random",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4339
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "triangle_random",
+          "labels": "response selection, motion detection,"
+        }
+      },
+
+      {
+        "name": "coll 4341 - left_auditory_click",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "left_auditory_click",
+          "labels": "audition, response selection, response execution, left finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4341 - right_auditory_click",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "right_auditory_click",
+          "labels": "audition, response selection, response execution, right finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4341 - left_visual_click",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "left_visual_click",
+          "labels": "visual perception, response selection, response execution, left finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4341 - right_visual_click",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "right_visual_click",
+          "labels": "visual perception, response selection, response execution, right finger response execution,"
+        }
+      },
+      {
+        "name": "coll 4341 - checkerboard",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "checkerboard",
+          "labels": "visual perception,visual orientation,"
+        }
+      },
+      {
+        "name": "coll 4341 - visual_calculation",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "visual_calculation",
+          "labels": "visual perception, arithmetic processing,"
+        }
+      },
+      {
+        "name": "coll 4341 - auditory_calculation",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "auditory_calculation",
+          "labels": "audition, arithmetic processing,"
+        }
+      },
+      {
+        "name": "coll 4341 - auditory&visual_calculation",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "auditory&visual_calculation",
+          "labels": "visual perception, audition, arithmetic processing,"
+        }
+      },
+      {
+        "name": "coll 4341 - visual_sentences",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "visual_sentences",
+          "labels": "visual perception, visual word recognition, sentence processing,"
+        }
+      },
+      {
+        "name": "coll 4341 - auditory_sentences",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "auditory_sentences",
+          "labels": "audition,  auditory sentence recognition, sentence processing,"
+        }
+      },
+      {
+        "name": "coll 4341 - auditory&visual_sentences",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4341
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "auditory&visual_sentences",
+          "labels": "visual perception, audition, visual word recognition, sentence processing,"
+        }
+      },
+
+      {
+        "name": "coll 2447 - left hand",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 2447
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "Left Hand",
+          "labels": "left hand response execution,"
+        }
+      },
+      {
+        "name": "coll 2447 - left leg",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 2447
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "Left Leg",
+          "labels": "left toe response execution,"
+        }
+      },
+      {
+        "name": "coll 2447 - tongue",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 2447
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "Tongue",
+          "labels": "tongue response execution,"
+        }
+      },
+      {
+        "name": "coll 2447 - dot tracking",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 2447
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "dot motion coherence judgement",
+          "labels": "visual perception, visual localization,"
+        }
+      },
+      {
+        "name": "coll 2447 - noun/verb judgement",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 2447
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "noun/verb judgement",
+          "labels": "visual perception, visual word recognition"
+        }
+      },
+
+      {
+        "name": "coll 503 - neutral photograph",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 503
+        },
+        "rule": {
+          "field": "Picture",
+          "pattern": "5720|5800|7000|7006|7010|7040|7060|7090|7100|7130|7150|7217|7490|7500|9210",
+          "labels": "visual perception,"
+        }
+      },
+      {
+        "name": "coll 503 - negative photograph",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 503
+        },
+        "rule": {
+          "field": "Picture",
+          "pattern": "2053|3051|3102|3120|3350|3500|3550|6831|9040|9050|9252|9300|9400|9810|9921",
+          "labels": "negative emotion, visual perception,"
+        }
+      },
+      {
+        "name": "coll 1964 - negative photograph (rating 3)",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 1964
+        },
+        "rule": {
+          "field": "Rating",
+          "pattern": 3,
+          "labels": "negative emotion, visual perception,"
+        }
+      },
+      {
+        "name": "coll 1964 - negative photograph (rating 4)",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 1964
+        },
+        "rule": {
+          "field": "Rating",
+          "pattern": 4,
+          "labels": "negative emotion, visual perception,"
+        }
+      },
+      {
+        "name": "coll 1964 - negative photograph (rating 5)",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 1964
+        },
+        "rule": {
+          "field": "Rating",
+          "pattern": 5,
+          "labels": "negative emotion, visual perception,"
+        }
+      }
+    ],
+    "apply_corrections": true,
+    "corrections": [
+      {
+        "name": "coll 4337 - remove emotion from shapes",
+        "filter": {
+          "field": "collection_id",
+          "pattern": 4337
+        },
+        "rule": {
+          "field": "contrast_definition",
+          "pattern": "SHAPES",
+          "remove": "emotion,\\s?"
+        }
+      }
+    ],
+    "apply_remove": true,
+    "to_remove": [
+      "activation",
+      "context",
+      "eating",
+      "hyperactivity",
+      "rule"
+    ],
+    "apply_synonyms": true,
+    "synonyms": {
+      "analogy": "analogical reasoning",
+      "association learning": "association,learning",
+      "auditory arithmetic processing": "arithmetic processing,audition",
+      "auditory perception": "audition",
+      "autobiographical recall": "autobiographical memory",
+      "emotional face recognition": "emotion recognition",
+      "encoding": "memory acquisition",
+      "facial recognition": "face recognition",
+      "imagery": "mental imagery",
+      "impulsivity": "inhibition",
+      "intention": "planning",
+      "interference resolution": "interference control",
+      "language processing": "language",
+      "listening": "audition",
+      "logic": "logical reasoning",
+      "motor learning": "motor planning",
+      "narrative": "story comprehension",
+      "prospective planning": "planning",
+      "recall": "memory retrieval",
+      "retrieval": "memory retrieval",
+      "semantic knowledge": "semantic processing",
+      "semantic information": "semantic processing",
+      "sound perception": "audition",
+      "visual face recognition": "face recognition",
+      "visual imagery": "mental imagery",
+      "visual representation": "mental imagery"
+    },
+    "apply_hypernyms": true,
+    "hypernyms": {
+      "response bias": "response selection",
+      "response conflict": "response selection",
+      "response execution": "action",
+      "response selection": "action",
+      "auditory coding": "audition",
+      "auditory tone detection": "audition",
+      "auditory tone discrimination": "audition",
+      "voice perception": "audition",
+      "audition": "perception",
+      "mathematical reasoning": "arithmetic processing",
+      "mental arithmetic": "arithmetic processing",
+      "numerical comparison": "arithmetic processing",
+      "attention shifting": "attention",
+      "fixation": "attention",
+      "interference control": "attention",
+      "spatial attention": "attention,spatial ability",
+      "search": "attention",
+      "visual attention": "attention,visual perception",
+      "response inhibition": "inhibition",
+      "behavioral inhibition": "inhibition",
+      "attention": "cognitive control",
+      "inhibition": "cognitive control",
+      "proactive control": "cognitive control",
+      "selective control": "cognitive control",
+      "task switching": "cognitive control",
+      "decision certainty": "decision making",
+      "decision under uncertainty": "decision making",
+      "risk aversion": "risk",
+      "risk processing": "risk",
+      "risk seeking": "risk",
+      "anticipation": "planning",
+      "uncertainty": "planning",
+      "decision making": "decision",
+      "risk": "decision",
+      "planning": "decision",
+      "emotion recognition": "emotion perception,recognition,visual perception",
+      "emotional suppression": "emotion regulation",
+      "emotional enhancement": "emotion regulation",
+      "fear": "negative emotion",
+      "stress": "negative emotion",
+      "arousal": "emotion",
+      "emotion perception": "emotion",
+      "emotion regulation": "emotion,cognitive control",
+      "emotional intelligence": "emotion,social cognition",
+      "negative emotion": "emotion",
+      "categorical perception": "categorization",
+      "pattern recognition": "recognition,visual perception",
+      "discrimination": "recognition",
+      "association": "integration",
+      "categorization": "integration",
+      "error detection": "integration",
+      "feature comparison": "integration",
+      "phonological comparison": "integration",
+      "recognition": "integration",
+      "relational comparison": "integration",
+      "auditory sentence recognition": "semantic processing,audition",
+      "story comprehension": "sentence processing",
+      "reading": "semantic processing,visual word recognition",
+      "semantic categorization": "semantic processing,categorization",
+      "semantic priming": "semantic processing,priming",
+      "sentence processing": "word comprehension, syntax",
+      "word comprehension": "semantic processing",
+      "word maintenance": "semantic processing,working memory",
+      "word recognition": "semantic processing",
+      "overt naming": "naming",
+      "naming": "speech production",
+      "word generation": "speech production",
+      "word repetition": "speech production",
+      "syntax": "language",
+      "semantic processing": "language",
+      "speech production": "language",
+      "speech perception": "language,voice perception",
+      "instrumental learning": "memory acquisition",
+      "reinforcement learning": "memory acquisition",
+      "rule learning": "memory acquisition",
+      "concept learning": "learning",
+      "autobiographical memory": "memory",
+      "episodic memory": "memory",
+      "forgetting": "memory",
+      "learning": "memory",
+      "memory acquisition": "memory",
+      "memory retrieval": "memory",
+      "memory trace": "memory",
+      "spatial memory": "memory",
+      "motor sequence learning": "motor planning",
+      "left finger response execution": "motor control,response execution",
+      "left hand response execution": "motor control,response execution",
+      "left toe response execution": "motor control,response execution",
+      "right finger response execution": "motor control,response execution",
+      "right hand response execution": "motor control,response execution",
+      "right toe response execution": "motor control,response execution",
+      "tongue response execution": "motor control,response execution",
+      "motor planning": "motor control,planning",
+      "movement": "motor control",
+      "effort": "pain",
+      "pain habituation": "pain",
+      "conceptual priming": "priming",
+      "detection": "attention,recognition",
+      "causal inference": "inference",
+      "analogical reasoning": "reasoning",
+      "inference": "reasoning",
+      "introspection": "reasoning",
+      "judgment": "reasoning",
+      "logic": "reasoning",
+      "meaning": "reasoning",
+      "mental representation": "reasoning",
+      "monitoring": "reasoning",
+      "problem solving": "reasoning",
+      "animacy decision": "animacy perception",
+      "animacy perception": "social cognition",
+      "social inference": "social cognition,inference",
+      "social norm processing": "social cognition",
+      "theory of mind": "social cognition",
+      "localization": "spatial ability",
+      "mental rotation": "spatial ability",
+      "spatial localization": "spatial ability",
+      "spatial ability":  "visual perception",
+      "potential monetary reward": "reward processing, anticipation",
+      "reward anticipation": "reward processing, anticipation",
+      "reward valuation": "reward processing",
+      "loss anticipation": "loss, anticipation",
+      "loss aversion": "loss, anticipation",
+      "potential monetary loss": "loss, anticipation",
+      "punishment processing": "loss",
+      "reward processing": "valence",
+      "loss": "valence",
+      "facial trustworthiness recognition": "face perception",
+      "face recognition": "face perception,recognition",
+      "visual body recognition": "visual recognition",
+      "visual form recognition": "visual recognition",
+      "visual object detection": "visual recognition,attention",
+      "visual object recognition": "visual recognition",
+      "visual pattern recognition": "visual recognition",
+      "visual place recognition": "visual recognition",
+      "visual tool recognition": "visual recognition",
+      "visual word recognition": "visual recognition",
+      "face perception": "visual perception",
+      "mental imagery": "visual perception",
+      "motion detection": "visual perception,attention",
+      "object perception": "visual perception",
+      "visual localization": "visual perception,spatial ability",
+      "visual memory": "visual perception,memory",
+      "visual orientation": "visual perception,spatial ability",
+      "visual recognition": "visual perception,recognition",
+      "visual search": "visual perception,attention",
+      "visual working memory": "visual perception,working memory",
+      "body maintenance": "maintenance",
+      "face maintenance": "maintenance",
+      "place maintenance": "maintenance",
+      "object maintenance": "maintenance",
+      "string maintenance": "maintenance",
+      "tool maintenance": "maintenance",
+      "visual object maintenance": "maintenance",
+      "maintenance": "working memory",
+      "procedural memory": "working memory",
+      "set shifting": "working memory",
+      "spatial working memory": "working memory,spatial ability",
+      "updating": "working memory",
+      "working memory retrieval": "working memory"
+    }
+  }
+}
