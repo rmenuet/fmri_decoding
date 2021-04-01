@@ -1,0 +1,50 @@
+{
+  "description":           "best params for logreg",
+
+  "data": {
+    "meta_file":        "../Data/meta/fmris_meta.csv",
+    "concepts_file":    "../Data/labels/cogatlas_concepts.txt",
+    "labels_file":      "../output/a7_label_all_syn_hyp.csv",
+    "blacklist":        {"collection_id": [4343]},
+
+    "features_file":    "fmris_emb_imp.p",
+    "scaling":          "samples",
+    "positive_values":  true
+  },
+
+  "labels": {
+    "min_train":        10,
+    "transformation":   "none",
+    "threshold":        null
+  },
+
+  "model_name":         "logreg_1nonlin",
+  "loss_func":          "logreg",
+  "loss":{
+    "group_power":      1.0,
+    "loss_func_name":   "logreg"
+  },
+
+
+  "torch_params": {
+    "group_power":      1.0,
+    "search":           10,
+    "splits":           5,
+    "Adam":             true,
+    "epochs":           200,
+    "batch_size":       1024
+  },
+
+  "grid_params": {
+    "lr":             [1e-3],
+    "l1_reg":         [1e-3],
+    "l2_reg":         [1e-3],
+    "latent_dim":     [300],
+    "hidden_dropout": [0.2]
+  },
+
+  "evaluation": {
+    "test_IDs":         [1952, 503],
+    "recall@N":         10
+  }
+}
